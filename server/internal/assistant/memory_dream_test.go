@@ -10,6 +10,7 @@ import (
 )
 
 func TestMemoryDreamUsesOnlyNewUserText(t *testing.T) {
+	const legacyWake = "⏰（Persona 叫醒你，第 1 次）你上一轮停下时说在等「检查完成」" // i18n-ignore: legacy injected prompt
 	items := []proto.Item{
 		{Seq: 1, Role: "user", Kind: proto.KindText, Text: "older"},
 		{Seq: 2, Role: "user", Kind: proto.KindText, Text: "first"},
@@ -18,9 +19,13 @@ func TestMemoryDreamUsesOnlyNewUserText(t *testing.T) {
 		{Seq: 5, Role: "user", Kind: proto.KindText, Text: "tool result", ToolUseID: "tool"},
 		{Seq: 6, Role: "user", Kind: proto.KindText, Text: "second"},
 		{Seq: 7, Role: "user", Kind: proto.KindText, Text: "truncated", FullSize: 42},
+		{Seq: 8, Role: "user", Kind: proto.KindText, Text: legacyWake, ClientMsgID: "typed-by-user"},
+		{Seq: 9, Role: "user", Kind: proto.KindText, Text: "new wake-up text", Injected: &proto.Injected{Kind: proto.InjectedFollowup, State: "wake"}},
+		{Seq: 10, Role: "user", Kind: proto.KindText, Text: legacyWake},
+		{Seq: 11, Role: "user", Kind: proto.KindText, Text: "relayed from another chat", From: "worker"},
 	}
 	messages, seq := memoryDreamMessages(items, 1)
-	if !reflect.DeepEqual(messages, []string{"first", "second"}) || seq != 6 {
+	if !reflect.DeepEqual(messages, []string{"first", "second", legacyWake}) || seq != 8 {
 		t.Fatalf("messages = %q, seq = %d", messages, seq)
 	}
 }
@@ -60,7 +65,7 @@ func TestMemoryDreamProcessesIdleMainOnce(t *testing.T) {
 	f := newFakeHub().withMachine()
 	f.devices = []Device{{ID: "server", Online: true, Home: "/home/example"}}
 	f.sessions["server"] = []proto.Session{{SessionID: "main", Assistant: true, Status: proto.StatusDone}}
-	f.items = []proto.Item{{Seq: 7, Role: "user", Kind: proto.KindText, Text: "I always prefer tea."}}
+	f.items = []proto.Item{{Seq: 6, Role: "user", Kind: proto.KindText, Text: "Automated reminder", Injected: &proto.Injected{Kind: proto.InjectedFollowup, State: "wake"}}}
 	f.judge = `{"body":"Prefers tea."}`
 	h := &dreamTestHub{fakeHub: f}
 	st := &memStore{}
@@ -75,6 +80,11 @@ func TestMemoryDreamProcessesIdleMainOnce(t *testing.T) {
 	f.mu.Lock()
 	f.hello.Assistant.MemoryDreaming = true
 	f.mu.Unlock()
+	s.memoryDream(ctx)
+	if f.judged != 0 || len(h.writes) != 0 {
+		t.Fatal("a transcript with only injected text triggered memory dreaming")
+	}
+	f.items = append(f.items, proto.Item{Seq: 7, Role: "user", Kind: proto.KindText, Text: "I always prefer tea."})
 	s.memoryDream(ctx)
 	s.memoryDream(ctx)
 	calls := f.judged

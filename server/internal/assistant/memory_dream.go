@@ -149,6 +149,8 @@ func memoryDreamMessages(items []proto.Item, after int) ([]string, int) {
 		if it.Seq <= after || it.Role != "user" || it.FullSize > 0 || it.Wake || it.Source != nil || it.Task != nil || it.Compact != nil || it.ToolUseID != "" {
 			continue
 		}
+		// extensionMessage also rejects cross-conversation text and Persona injections,
+		// including legacy prompts that carry no Source or Injected metadata.
 		msg, ok := extensionMessage(it)
 		if !ok {
 			continue
