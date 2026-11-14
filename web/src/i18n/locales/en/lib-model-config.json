@@ -1,5 +1,0 @@
-{
-  "effort": "Thinking {effort}",
-  "not_configured": "Not set",
-  "runtime_fallback": "Fell back to the CLI: {reason}"
-}

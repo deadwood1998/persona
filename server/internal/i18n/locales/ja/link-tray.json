@@ -1,9 +1,0 @@
-{
-  "ssh_error_no_ssh": "このコンピューターには ssh コマンドがないため、先に OpenSSH クライアントをインストールしてください。",
-  "ssh_error_auth_refused": "SSH サーバー（{server}）に認証を拒否されたため、公開鍵・ssh-agent・~/.ssh/config を確認してください。",
-  "ssh_error_host_key": "この SSH サーバーのホスト鍵がまだ信頼されていないため、先にターミナルで一度「{cmd}」を実行して確認・承認してください。",
-  "ssh_error_forward_refused": "SSH サーバーに {target} へのポート転送を拒否されたため、サーバー側の AllowTcpForwarding と permitopen を確認してください。",
-  "ssh_error_target_unreachable": "SSH 経由で {target} のハブから応答がないため、ハブが動いているかと宛先ポートが正しいかを確認してください。",
-  "ssh_error_ssh_unreachable": "SSH サーバー（{server}）に接続できないため、サーバーのアドレスとこのコンピューターのネットワークを確認してください。",
-  "ssh_error_invalid": "SSH サーバーは [user@]host[:port] または別名、宛先は host:port の形式で入力してください。"
-}

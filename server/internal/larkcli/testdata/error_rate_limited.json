@@ -1,9 +1,0 @@
-{
-  "ok": false,
-  "identity": "user",
-  "error": {
-    "type": "rate_limit",
-    "subtype": "rate_limited",
-    "message": "request rate limited"
-  }
-}
