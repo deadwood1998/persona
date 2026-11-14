@@ -1,9 +1,0 @@
-{
-  "ok": false,
-  "identity": "user",
-  "error": {
-    "type": "authorization",
-    "subtype": "permission_denied",
-    "message": "document is not readable"
-  }
-}

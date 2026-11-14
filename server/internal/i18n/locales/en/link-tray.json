@@ -1,9 +1,0 @@
-{
-  "ssh_error_no_ssh": "There is no ssh command on this computer; install an OpenSSH client first.",
-  "ssh_error_auth_refused": "The SSH server ({server}) refused authentication; check your key, ssh-agent, or ~/.ssh/config.",
-  "ssh_error_host_key": "This SSH server's host key isn't trusted yet; run “{cmd}” once in a terminal to check and accept it.",
-  "ssh_error_forward_refused": "The SSH server refused port forwarding to {target}; check AllowTcpForwarding and permitopen on the server.",
-  "ssh_error_target_unreachable": "The hub isn't answering at {target} through the SSH server; check that the hub is running and the target port is right.",
-  "ssh_error_ssh_unreachable": "Can't reach the SSH server ({server}); check the server address and this computer's network.",
-  "ssh_error_invalid": "Enter an SSH server as [user@]host[:port] or an alias, and a target as host:port."
-}
