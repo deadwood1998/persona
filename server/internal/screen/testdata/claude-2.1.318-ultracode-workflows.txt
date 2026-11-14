@@ -1,7 +1,0 @@
-❯ /effort ultracode on
-  ⎿  Ultracode needs dynamic workflows enabled (see /config).
-
-────────────────────────────────────────────────────────────
-❯
-────────────────────────────────────────────────────────────
-  ? for shortcuts

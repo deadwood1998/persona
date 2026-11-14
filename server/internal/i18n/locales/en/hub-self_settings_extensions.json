@@ -1,7 +1,0 @@
-{
-  "title": "{name} settings",
-  "default": "{value} (default)",
-  "on": "On",
-  "off": "Off",
-  "list_separator": ", "
-}
