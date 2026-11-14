@@ -188,6 +188,27 @@ struct RFBClientTests {
         #expect(!t.sent.contains { $0.first == 5 }, "no PointerEvent sent for the resize")
     }
 
+    /// #7775: the wheel sends every notch it is given, each pressed and let go where it was asked (it once dropped any
+    /// past 20 in a call; VNCWheel now sends a few each display frame).
+    @MainActor @Test func sessionScrollsEveryNotch() async throws {
+        func u16(_ v: Int) -> [UInt8] { [UInt8(v >> 8), UInt8(v & 0xff)] }
+        var server: [UInt8] = u16(300) + u16(200); server += [UInt8](repeating: 0, count: 16); server += RFBAuth.be32(0)
+        let t = ScriptedTransport([Array("RFB 003.889\n".utf8), [1, 1], RFBAuth.be32(0), server], holds: true)
+        let session = RFBSession(ref: MachineRef(id: "mac"))
+        defer { session.close() }
+        session.run(RFBClient(transport: t) { nil })
+        for _ in 0..<300 where session.phase != .live { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(session.phase == .live)
+        session.scroll(notches: -30, at: CGPoint(x: 10, y: 20))
+        session.scroll(notches: 2, at: CGPoint(x: 10, y: 20))
+        func pointer() -> [[UInt8]] { t.sent.filter { $0.first == 5 } }
+        for _ in 0..<300 where pointer().count < 64 { try await Task.sleep(for: .milliseconds(10)) }
+        var down: [UInt8] = []
+        for _ in 0..<30 { down += [16, 0] }
+        #expect(pointer().map { $0[1] } == down + [8, 0, 8, 0], "30 down and 2 up, each pressed and let go")
+        #expect(pointer().allSatisfy { Array($0[2...]) == [0, 10, 0, 20] })
+    }
+
     /// ExtendedDesktopSize (-308, #80): asked for; the server's screens come with the first update, in framebuffer pixels,
     /// before the rectangles drawn after them; a later one at another size resizes first; one whose status is not 0 (an
     /// answer to a resize request, which this client never makes) changes nothing.
@@ -247,6 +268,53 @@ struct RFBClientTests {
         try await Task.sleep(for: .milliseconds(300))
         client.close()
         #expect(t.sent.filter { $0.first == 4 || $0.first == 5 || $0.first == 6 } == out)
+    }
+
+    /// #3954: while the video channel shows the picture, an update that comes asks for no next one; released, the held
+    /// request goes out once (incremental: the Mac sends what changed since its last update).
+    @Test func heldUpdatesAskForNoMore() async throws {
+        func u16(_ v: Int) -> [UInt8] { [UInt8(v >> 8), UInt8(v & 0xff)] }
+        var s0: [UInt8] = u16(2) + u16(2); s0 += [UInt8](repeating: 0, count: 16); s0 += RFBAuth.be32(4); s0 += Array("Mock".utf8)
+        // In typed steps: as one sum Xcode 26.0 could not type-check it in time.
+        var raw: [UInt8] = [0, 0] + u16(1)
+        raw += u16(0) + u16(0)
+        raw += u16(1) + u16(1)
+        raw += RFBAuth.be32(0) + [1, 2, 3, 0]
+        let a1: [UInt8] = [1] + RFBAuth.be32(256)
+        let script: [[UInt8]] = [Array("RFB 003.889\n".utf8), [1, 19], [0, 2], [0], a1, RFBAuth.be32(0), s0, raw, raw]
+        let t = ScriptedTransport(script, holds: true)
+        let seen = Seen()
+        let client = RFBClient(transport: t) { .init(account: "me", password: "mock-pass") }
+        client.onFrame = { _, _ in Task { await seen.frame([], [], []) } }
+        client.holdUpdates(true)
+        client.start()
+        for _ in 0..<300 where await seen.snapshot.frames.count < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(await seen.snapshot.frames.count == 2)
+        func requests() -> [UInt8] { t.sent.filter { $0.count == 10 && $0[0] == 3 }.map { $0[1] } }
+        #expect(requests() == [0], "only the first, whole one")
+        client.holdUpdates(false)
+        for _ in 0..<100 where requests().count < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(requests() == [0, 1], "the held one, once")
+        client.holdUpdates(false)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(requests() == [0, 1], "nothing more was held")
+        client.close()
+    }
+
+    /// #3954: the screen-sharing stream carries a pair, which the video channel binds to. A WebSocket URL with it; none
+    /// without one (the URL as before); and a fresh, unguessable one each connection.
+    @Test func theConnectURLCarriesAPair() throws {
+        let http = try #require(URL(string: "https://hub.example.com/api/v1/machines/macbook/ports/5900/connect"))
+        let paired = RFBWebSocket.url(http, pair: "0123abcd")
+        #expect(paired.absoluteString == "wss://hub.example.com/api/v1/machines/macbook/ports/5900/connect?pair=0123abcd")
+        #expect(RFBWebSocket.url(http, pair: nil).absoluteString == "wss://hub.example.com/api/v1/machines/macbook/ports/5900/connect")
+        #expect(RFBWebSocket.url(http, pair: "").query == nil, "an empty pair is no pair")
+        let plain = try #require(URL(string: "http://192.0.2.1:8787/api/v1/machines/m/ports/5900/connect"))
+        #expect(RFBWebSocket.url(plain, pair: "p").scheme == "ws", "a hub over http is ws")
+
+        let a = RFBWebSocket.newPair(), b = RFBWebSocket.newPair()
+        #expect(a.count == 32 && a.allSatisfy(\.isHexDigit), "16 random bytes in hex: \(a)")
+        #expect(a != b, "a new pair each connection")
     }
 }
 
