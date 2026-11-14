@@ -726,9 +726,11 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
   }, [earlier.stretches, firstLiveSeq]);
   const frontNow = useRef(historyFront);
   frontNow.current = historyFront;
-  const before = useRef<{
+  type HistoryScrollAnchor = {
     el: HTMLDivElement; chat: string; front: typeof historyFront; h: number; top: number; readers: number;
-  } | null>(null);
+  };
+  const before = useRef<HistoryScrollAnchor | null>(null);
+  const [finishedHistoryRead, setFinishedHistoryRead] = useState<{ anchor: HistoryScrollAnchor } | null>(null);
   const loadWithScrollAnchor = useCallback(async (load: () => Promise<void>) => {
     const el = scroller.current;
     if (!el) return load();
@@ -743,10 +745,8 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
       await load();
     } finally {
       saved.readers--;
-      // Forget a page that produced no rows, without clearing a newer anchor.
-      if (!saved.readers) requestAnimationFrame(() => {
-        if (before.current === saved && !saved.readers) before.current = null;
-      });
+      // Let the layout effect check for prepended rows after React commits the page.
+      if (!saved.readers && before.current === saved) setFinishedHistoryRead({ anchor: saved });
     }
   }, []);
   const first = useRef(true);
@@ -804,6 +804,9 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
       before.current = null;
       return;
     }
+    if (saved && finishedHistoryRead?.anchor === saved && !saved.readers) {
+      before.current = saved = null;
+    }
     const place = kept.current.place;
     // the line it was at, `offset` under the view's top again; until that line comes in, the chat opens at its end as
     // it always does (and goes to the line once it is there)
@@ -827,7 +830,7 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
       saved.h = el.scrollHeight;
       saved.top = el.scrollTop;
     }
-  }, [tr.items, earlier.stretches, pending, outbox, tr.streaming, interactions.length]);
+  }, [tr.items, earlier.stretches, pending, outbox, tr.streaming, interactions.length, finishedHistoryRead]);
 
   // A card that unfolds (#1124): following holds off for UNFOLD_PAUSE while the clicked row stays where it was on
   // screen (anchoredScroll), then picks up again if the end is still near; a long card opened at the end stays put to
