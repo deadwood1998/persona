@@ -1677,7 +1677,12 @@ func (s *Service) runTask(t Task, due, now time.Time, manual, retried bool) (pro
 		return proto.Session{}, s.skipRun(run, errTaskBusy)
 	}
 	defer s.sched.end(t.ID)
-	if t.SessionID != "" && !t.pushesOnlyAsked() && s.quietConversation(ctx, t.SessionID) {
+	fresh := t.FreshEachRun && t.Repeat != repeatOnce
+	if fresh {
+		// Override the destination only for this dispatch. Keeping the origin on the saved task
+		// lets the user restore same-chat runs without losing where the follow-up came from.
+		t.SessionID = ""
+	} else if t.SessionID != "" && !t.pushesOnlyAsked() && s.quietConversation(ctx, t.SessionID) {
 		// Another task's quiet conversation (its finished turns go unpushed): this one wants its runs pushed, so it
 		// runs in its own instead (#2396).
 		s.logf("task %s: %s is a quiet task's conversation; running in its own", t.ID, short(t.SessionID))
@@ -1709,9 +1714,6 @@ func (s *Service) runTask(t Task, due, now time.Time, manual, retried bool) (pro
 	}
 	t.factsText = s.runFacts(ctx, t, time.Now()) // the run's facts, worked out once (north_star.go)
 	isolateScheduledConversation(&t, s.mayBeMainNow(ctx))
-	if t.FreshEachRun && t.Repeat != repeatOnce {
-		t.SessionID = ""
-	}
 	if t.SessionID != "" {
 		if m, ok := s.device(ctx, t.MachineID); ok {
 			// A follow-up the assistant scheduled for itself is a turn of that conversation: it keeps the
@@ -1757,7 +1759,7 @@ func (s *Service) runTask(t Task, due, now time.Time, manual, retried bool) (pro
 				s.tellWaitingSkip(ctx, t, m)
 			}
 			return proto.Session{}, err
-		case t.FreshEachRun && t.Repeat != repeatOnce:
+		case fresh:
 			// Keep the prior session for busy detection, then start a new one below.
 		default:
 			params := map[string]any{"session_id": t.RunSessionID, "text": taskPrompt(t, due, now, loc, manual, kb, true), "message_source": taskMessageSource(t), "permission_mode": t.PermissionMode, "resume_only": true}
@@ -2547,6 +2549,7 @@ func (s *Service) scheduleRoutes() {
 			return
 		}
 		delete(raw, "until") // not a time.Time: "30m" and a local clock time would not unmarshal
+		ignoreTaskStateNote(raw)
 		var in Task
 		encoded, _ := json.Marshal(raw)
 		if err := json.Unmarshal(encoded, &in); err != nil {
@@ -2556,7 +2559,7 @@ func (s *Service) scheduleRoutes() {
 		t := editTask(Task{ID: "task_" + randomHex(4), CreatedAt: now.UTC()}, in, now)
 		t.SessionID, t.Push, t.Inbox = "", push, inbox
 		if err := editTaskState(&t, in, raw, now); err != nil {
-			apierr.Write(w, http.StatusBadRequest, err)
+			writeTaskStateError(w, err)
 			return
 		}
 		applyUntil(&t, end, hasUntil, clearUntil)
@@ -2596,6 +2599,7 @@ func (s *Service) scheduleRoutes() {
 			return
 		}
 		delete(raw, "until") // not a time.Time: "30m" and a local clock time would not unmarshal
+		ignoreTaskStateNote(raw)
 		mayBeMain := s.mayBeMainNow(r.Context())
 		sc, err := s.lockedSchedule(r.Context())
 		if err != nil {
@@ -2624,7 +2628,7 @@ func (s *Service) scheduleRoutes() {
 		t := editTask(sc.tasks[i], in, now)
 		if err := editTaskState(&t, in, raw, now); err != nil {
 			sc.mu.Unlock()
-			apierr.Write(w, http.StatusBadRequest, err)
+			writeTaskStateError(w, err)
 			return
 		}
 		push, has, err := pushIn(raw)

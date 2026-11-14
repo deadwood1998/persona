@@ -3,13 +3,20 @@ package assistant
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/nwverse/persona/server/internal/apierr"
+	"github.com/nwverse/persona/server/internal/i18n"
 )
 
 const taskStateMaxBytes = 4096
+
+var errTaskStateChanged = i18n.Err("assistant-schedule.task_state_changed")
 
 // TaskStateNote holds the task's durable cursor. A revision also covers an explicit
 // clear so a run based on an older revision cannot restore the deleted state.
@@ -37,6 +44,16 @@ func validateTaskState(text string) error {
 	return nil
 }
 
+// Task also describes API responses and stored rows. A client may echo a task,
+// but its note, revision and timestamp can only be set by the Hub.
+func ignoreTaskStateNote(raw map[string]json.RawMessage) {
+	for key := range raw {
+		if strings.EqualFold(key, "state_note") {
+			delete(raw, key)
+		}
+	}
+}
+
 func editTaskState(task *Task, input Task, raw map[string]json.RawMessage, now time.Time) error {
 	if _, present := raw["fresh_each_run"]; present {
 		task.FreshEachRun = input.FreshEachRun
@@ -55,8 +72,25 @@ func editTaskState(task *Task, input Task, raw map[string]json.RawMessage, now t
 	if err := validateTaskState(*text); err != nil {
 		return err
 	}
+	if value, present := raw["state_revision"]; present {
+		var revision *uint64
+		if err := json.Unmarshal(value, &revision); err != nil || revision == nil {
+			return errors.New("state_revision must be a non-negative integer")
+		}
+		if *revision != task.StateNote.revision() {
+			return errTaskStateChanged
+		}
+	}
 	task.StateNote = nextTaskState(task.StateNote, *text, now)
 	return nil
+}
+
+func writeTaskStateError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errTaskStateChanged) {
+		apierr.WriteCode(w, http.StatusConflict, "task_state_changed", err)
+		return
+	}
+	apierr.Write(w, http.StatusBadRequest, err)
 }
 
 func taskStatePrompt(task Task) string {

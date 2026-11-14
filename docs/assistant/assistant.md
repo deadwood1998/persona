@@ -929,7 +929,9 @@ In the Web Scheduled tasks editor, expand **Run continuity** to edit a recurring
 The hub includes the last saved note in each run. Keep cursors and a short record of what has already been reported, up to 4,096 UTF-8 bytes.
 A run can stage a replacement with `schedule_state_set`. Staging is temporary. The hub saves the replacement only if it can track the run through a successful turn and write the note.
 If the hub cannot register the dispatched run or monitor its conversation, it discards the draft and the next run reads the last saved note.
-A user edit takes precedence over updates from a run that started before that edit.
+A user edit takes precedence over updates from a run that started before that edit. The editor sends the note's
+revision when changing its text. If a run already saved a newer note, the hub rejects the stale edit so the user can
+review the new note before changing it. Saving another task field keeps the current note.
 
 Deployment: update hub and node together (`resume_only` is new; old node ignores it and creates a new chat under a missing old id).
 

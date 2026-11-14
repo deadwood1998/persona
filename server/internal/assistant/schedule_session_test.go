@@ -72,6 +72,55 @@ func TestATaskRunsInItsOwnConversation(t *testing.T) {
 	}
 }
 
+func TestAFreshRecurringTaskStartsNewChatsWithARetainedOrigin(t *testing.T) {
+	node := newFakeHub().withMachine()
+	h := newStorelessService(t, node)
+	setSettings(t, h, func(s *Settings) { s.Main, s.MachineID = "main", "server" })
+	const origin = "old-followup-chat"
+	setTasks(h, Task{ID: "followup", Title: "Patrol", Prompt: "Check the changes.",
+		Repeat: repeatOnce, At: time.Now().Add(time.Hour), Enabled: true, MachineID: "server", SessionID: origin})
+
+	// The task editor converts an existing follow-up to a recurring task with fresh chats.
+	update := func(fresh bool) {
+		t.Helper()
+		body, err := json.Marshal(map[string]any{
+			"title": "Patrol", "prompt": "Check the changes.", "repeat": repeatInterval, "every_minutes": 30,
+			"enabled": true, "session_id": origin, "fresh_each_run": fresh,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPut, "/api/v1/assistant/tasks/followup", strings.NewReader(string(body))))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("update task: %d %s", rec.Code, rec.Body)
+		}
+		saved, _ := taskByID(h, "followup")
+		if saved.Repeat != repeatInterval || saved.FreshEachRun != fresh || saved.SessionID != origin {
+			t.Fatalf("converted follow-up lost its origin or run preference: %+v", saved)
+		}
+	}
+	update(true)
+
+	first, err := runNow(t, h, "followup")
+	if err != nil || first.SessionID == "" || first.SessionID == origin {
+		t.Fatalf("first fresh run reused the origin: %+v, %v", first, err)
+	}
+	second, err := runNow(t, h, "followup")
+	if err != nil || second.SessionID == "" || second.SessionID == origin || second.SessionID == first.SessionID {
+		t.Fatalf("second fresh run did not start a separate conversation: %+v, %v", second, err)
+	}
+	if saved, _ := taskByID(h, "followup"); saved.SessionID != origin || saved.RunSessionID != second.SessionID {
+		t.Fatalf("fresh dispatch changed the stored origin or lost the last run: %+v", saved)
+	}
+
+	update(false)
+	continued, err := runNow(t, h, "followup")
+	if err != nil || continued.SessionID != origin {
+		t.Fatalf("turning off fresh runs did not restore the origin: %+v, %v", continued, err)
+	}
+}
+
 // A conversation that is gone (Claude Code cleans transcripts up after 30 days), one on another launcher, or one the
 // user reset ("New chat next time") can't be continued: the run starts a new one and that becomes the task's.
 func TestATaskStartsANewConversationWhenItsOwnCannotGoOn(t *testing.T) {

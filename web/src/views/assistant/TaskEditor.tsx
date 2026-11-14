@@ -107,7 +107,8 @@ export function TaskEditor({
       ? await api<{ task: Task }>(`/assistant/tasks/${enc(saved.id)}`, { method: "PUT", json: body })
       : await api<{ task: Task }>("/assistant/tasks", { method: "POST", json: body });
     setSaved(r.task);
-    setDraft((d) => ({ ...d, id: r.task.id }));
+    // Run now may fail after saving. Keep the displayed note and its saved revision in sync if the editor stays open.
+    setDraft((d) => ({ ...d, id: r.task.id, state_note: r.task.state_note }));
     onSaved(r.task);
     return r.task;
   };
@@ -296,6 +297,7 @@ export function TaskEditor({
                   <textarea
                     className={textareaClass}
                     rows={3}
+                    disabled={working}
                     value={draft.state_note?.text ?? ""}
                     onChange={(e) => set({
                       state_note: { revision: draft.state_note?.revision ?? 0, updated_at: draft.state_note?.updated_at ?? "", text: e.target.value },
