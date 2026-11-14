@@ -1,5 +1,0 @@
-{
-  "state": "not_signed_in",
-  "error": "The sign-in to Example Chat has expired.",
-  "guide": ["Open Settings › Connectors › Example Chat.", "Sign in again."]
-}

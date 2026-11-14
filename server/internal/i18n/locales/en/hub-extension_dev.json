@@ -1,4 +1,0 @@
-{
-  "owner_only": "Extensions in development can only be attached on the hub machine (personad extension dev)",
-  "not_found": "No extension in development called {id}"
-}
