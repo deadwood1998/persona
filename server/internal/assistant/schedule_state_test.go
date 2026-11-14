@@ -110,6 +110,35 @@ func TestTaskStateSurvivesRestartAndSkippedRun(t *testing.T) {
 	}
 }
 
+func TestTaskStateDiscardsDraftWhenRunCannotBeRegistered(t *testing.T) {
+	ctx := t.Context()
+	store := &flakyScheduleStore{data: map[string][]byte{}}
+	task := Task{ID: "daily", Repeat: repeatDaily, StateNote: &TaskStateNote{Text: "previous cursor", Revision: 1}}
+	if err := store.PutSetting(ctx, tasksKey, []Task{task}); err != nil {
+		t.Fatal(err)
+	}
+	node := newFakeHub().withMachine()
+	s := newServiceOn(t, node, store)
+	store.failReads(true)
+	task.stateRunKey = s.openTaskStateDraft()
+	node.setItems(proto.Item{Role: "user", Kind: proto.KindText, Text: taskStatePrompt(task)})
+	args, _ := json.Marshal(map[string]string{"run_key": task.stateRunKey, "text": "new cursor"})
+	result, err := s.toolScheduleStateSet(ctx, "server", "scheduled", args)
+	if err != nil || !strings.Contains(result, "not yet saved") {
+		t.Fatalf("staging an already dispatched turn: %q, %v", result, err)
+	}
+	s.startScheduledRun(ScheduleRun{RefID: task.ID, MachineID: "server", SessionID: "scheduled"}, task, &Device{ID: "server"})
+	if _, err := s.toolScheduleStateSet(ctx, "server", "scheduled", args); err == nil || !strings.Contains(err.Error(), "no longer accepting state") {
+		t.Fatalf("the unregistered run still accepts state: %v", err)
+	}
+	store.failReads(false)
+	tasks, runs := scheduleState(s)
+	if len(runs) != 0 || len(tasks) != 1 || tasks[0].StateNote == nil ||
+		tasks[0].StateNote.Text != "previous cursor" || tasks[0].StateNote.Revision != 1 {
+		t.Fatalf("reloaded tasks and runs after storage recovered: %+v, %+v", tasks, runs)
+	}
+}
+
 func TestTaskStateFiveFreshRunsCarryOnlyNewFindings(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		node := newFakeHub().withMachine()

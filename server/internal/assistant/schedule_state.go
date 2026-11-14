@@ -128,7 +128,7 @@ func (s *Service) toolScheduleStateSet(ctx context.Context, machine, session str
 		return "", fmt.Errorf("this scheduled run is no longer accepting state")
 	}
 	s.sched.stateDrafts[input.RunKey] = taskStateDraft{machine: machine, session: session, text: *input.Text}
-	return "State staged. The hub saves it when this scheduled run succeeds.", nil
+	return "State staged, but not yet saved. The hub attempts to save it after confirming that this run succeeded.", nil
 }
 
 func matchesTaskStateRun(prompt, key string) bool {

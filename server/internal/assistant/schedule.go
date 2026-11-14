@@ -1945,6 +1945,7 @@ func (s *Service) startScheduledRun(run ScheduleRun, t Task, m *Device) {
 	}
 	run.ID = s.recordRun(run)
 	if m == nil || run.ID == "" {
+		// There's no watcher to confirm success. Discard the draft so the next run reads only the last saved note.
 		s.takeTaskStateDraft(t.stateRunKey)
 		return
 	}
