@@ -1,9 +1,0 @@
-{
-  "ssh_error_no_ssh": "这台电脑上没有 ssh 命令，先安装 OpenSSH 客户端。",
-  "ssh_error_auth_refused": "SSH 服务器（{server}）拒绝了登录认证，请检查公钥、ssh-agent 或 ~/.ssh/config。",
-  "ssh_error_host_key": "还不信任这台 SSH 服务器的主机密钥，先在终端里运行一次 {cmd} 确认并接受它。",
-  "ssh_error_forward_refused": "SSH 服务器拒绝转发到 {target}，请检查服务器上的 AllowTcpForwarding 和 authorized_keys 里的 permitopen。",
-  "ssh_error_target_unreachable": "经 SSH 连不上 {target} 上的 hub，请检查 hub 在不在运行、目标端口对不对。",
-  "ssh_error_ssh_unreachable": "连不上 SSH 服务器（{server}），请检查服务器地址和这台电脑的网络。",
-  "ssh_error_invalid": "SSH 服务器写成 [user@]host[:port] 或别名，目标地址写成 地址:端口。"
-}

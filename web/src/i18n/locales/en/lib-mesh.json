@@ -1,7 +1,0 @@
-{
-  "via_local": "This machine",
-  "via_link": "Computer link",
-  "via_peer": "Via linked hub",
-  "hops_one": "{count} hop",
-  "hops_other": "{count} hops"
-}

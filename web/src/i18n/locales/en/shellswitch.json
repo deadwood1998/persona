@@ -1,8 +1,0 @@
-{
-  "assistant": "Assistant",
-  "agents": "Agents",
-  "sidebar": "Sidebar",
-  "switch_page": "Switch page",
-  "waiting_label_one": "{label}, {count} needs you",
-  "waiting_label_other": "{label}, {count} need you"
-}
