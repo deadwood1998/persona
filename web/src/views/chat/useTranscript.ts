@@ -35,7 +35,10 @@ export interface Transcript {
   error: string;
   hasMore: boolean;
   loadingEarlier: boolean;
-  loadEarlier: () => Promise<void>;
+  /** Identifies the last older page applied to items. */
+  earlierPage?: symbol;
+  /** Returns the page's identity if older items were queued; a joined read returns the same identity. */
+  loadEarlier: () => Promise<symbol | undefined>;
   expandFold: (fold: Item) => Promise<void>;
   /** The reply as it is written, before the transcript has it: the headless assistant's, or an agent's as Claude shows it
    *  (a Claude session Persona started; docs/integrations/claude-integration.md "Live replies"). "" for none. */
@@ -75,6 +78,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
   const [error, setError] = useState("");
   const [hasMore, setHasMore] = useState(initial?.hasMore ?? false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [earlierPage, setEarlierPage] = useState<symbol>();
   const [streaming, setStreaming] = useState("");
   const [nonce, setNonce] = useState(0);
   const [notLive, setNotLive] = useState(false);
@@ -95,7 +99,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
   // Bumped whenever the shown conversation starts over (another session, or the file was rewritten): an older page or a
   // fold asked for before that is dropped when it lands, so it never merges into the conversation shown by then.
   const generation = useRef(0);
-  const earlierInFlight = useRef<Promise<void> | null>(null); // concurrent callers can wait for the same page
+  const earlierInFlight = useRef<Promise<symbol | undefined> | null>(null);
   const rewrite = useRef<() => void>(() => {}); // the effect's cache invalidation, shared with older-page reads below
   // The back-off after a failed older page: when loadEarlier may ask again, and how long the last wait was.
   const earlierRetryAt = useRef(0);
@@ -383,7 +387,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
   const loadEarlier = useCallback(() => {
     if (earlierInFlight.current) return earlierInFlight.current;
     const first = itemsRef.current[0];
-    if (!first || !hasMore || Date.now() < earlierRetryAt.current) return Promise.resolve();
+    if (!first || !hasMore || Date.now() < earlierRetryAt.current) return Promise.resolve(undefined);
     const gen = generation.current;
     setLoadingEarlier(true);
     const read = (async () => {
@@ -399,6 +403,11 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
         setError("");
         earlierRetryAt.current = 0;
         earlierWait.current = 0;
+        if (p.items?.some((item) => item.seq < first.seq)) {
+          const page = Symbol();
+          setEarlierPage(page);
+          return page;
+        }
       } catch (e) {
         if (gen !== generation.current) return;
         // Kept in state for the caller to show; the next try waits instead of firing on every scroll tick.
@@ -435,5 +444,5 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
     [mid, sid, apply],
   );
 
-  return { items, history: history.current, loading, firstRead, error, hasMore, loadingEarlier, loadEarlier, expandFold, streaming, notLive, reload: () => setNonce((x) => x + 1) };
+  return { items, history: history.current, loading, firstRead, error, hasMore, loadingEarlier, earlierPage, loadEarlier, expandFold, streaming, notLive, reload: () => setNonce((x) => x + 1) };
 }

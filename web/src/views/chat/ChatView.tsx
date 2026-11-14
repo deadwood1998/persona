@@ -198,6 +198,17 @@ const SEARCH_NOTICE: Record<SearchLoadOutcome, string | null> = {
 };
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
+// An earlier A page in A → B → A does not change the live stretch. Read the rendered stretch
+// rather than the raw session or the parent's last report, which can trail the child DOM.
+function visibleHistoryFront(scroller: HTMLElement, live: number) {
+  const oldest = scroller.querySelector<HTMLElement>("[data-stretch-index]");
+  return {
+    live,
+    stretch: oldest ? Number(oldest.dataset.stretchIndex) : Infinity,
+    stretchSeq: oldest ? Number(oldest.dataset.stretchFirst) : Infinity,
+  };
+}
+
 interface Pending {
   /** The client_msg_id it went with. */
   id: string;
@@ -719,34 +730,38 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
   }, []);
   const lastTop = useRef(0);
   const dragging = useRef(false);
-  const firstLiveSeq = tr.items[0]?.seq ?? Infinity;
-  const historyFront = useMemo(() => {
-    const oldestStretch = earlier.stretches.find((s) => s.items.length);
-    return { live: firstLiveSeq, stretch: oldestStretch?.index ?? Infinity, stretchSeq: oldestStretch?.items[0]?.seq ?? Infinity };
-  }, [earlier.stretches, firstLiveSeq]);
-  const frontNow = useRef(historyFront);
-  frontNow.current = historyFront;
+  const firstLiveSeq = earlier.liveItems[0]?.seq ?? Infinity;
+  const liveFront = useRef(firstLiveSeq);
+  liveFront.current = firstLiveSeq;
+  const historyScope = `${mid}/${sid}/${tr.history ?? ""}`;
+  const historyScopeNow = useRef(historyScope);
+  historyScopeNow.current = historyScope;
   type HistoryScrollAnchor = {
-    el: HTMLDivElement; chat: string; front: typeof historyFront; h: number; top: number; readers: number;
+    el: HTMLDivElement; scope: string; front: ReturnType<typeof visibleHistoryFront>;
+    h: number; top: number; readers: number; pages: Set<symbol>;
   };
   const before = useRef<HistoryScrollAnchor | null>(null);
-  const [finishedHistoryRead, setFinishedHistoryRead] = useState<{ anchor: HistoryScrollAnchor } | null>(null);
-  const loadWithScrollAnchor = useCallback(async (load: () => Promise<void>) => {
+  const projectedPages = useRef<(symbol | undefined)[]>([]);
+  const loadWithScrollAnchor = useCallback(async (load: () => Promise<symbol | undefined>) => {
     const el = scroller.current;
-    if (!el) return load();
+    if (!el) { await load(); return; }
     // Scroll, search and the rail may all wait for the same page. A join can establish the anchor
     // if the read had none, and a caller returning early must not clear it for the others.
-    if (before.current?.el !== el || before.current.chat !== railChat.current) {
-      before.current = { el, chat: railChat.current, front: frontNow.current, h: el.scrollHeight, top: el.scrollTop, readers: 0 };
+    if (before.current?.el !== el || before.current.scope !== historyScopeNow.current) {
+      before.current = {
+        el, scope: historyScopeNow.current, front: visibleHistoryFront(el, liveFront.current),
+        h: el.scrollHeight, top: el.scrollTop, readers: 0, pages: new Set(),
+      };
     }
     const saved = before.current;
     saved.readers++;
     try {
-      await load();
+      const page = await load();
+      if (page && !projectedPages.current.includes(page)) saved.pages.add(page);
     } finally {
       saved.readers--;
-      // Let the layout effect check for prepended rows after React commits the page.
-      if (!saved.readers && before.current === saved) setFinishedHistoryRead({ anchor: saved });
+      // A successful read can finish before its rows are visible. Only a no-op can release the anchor here.
+      if (!saved.readers && !saved.pages.size && before.current === saved) before.current = null;
     }
   }, []);
   const first = useRef(true);
@@ -794,18 +809,25 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
+    const { projectedLivePage, projectedOtherPage } = earlier;
+    projectedPages.current = [projectedLivePage, projectedOtherPage];
     let saved = before.current;
-    if (saved && (saved.el !== el || saved.chat !== railChat.current)) {
+    if (saved && (saved.el !== el || saved.scope !== historyScope)) {
       before.current = saved = null;
     }
-    if (saved && (historyFront.live < saved.front.live || historyFront.stretch < saved.front.stretch ||
-      (historyFront.stretch === saved.front.stretch && historyFront.stretchSeq < saved.front.stretchSeq))) {
-      el.scrollTop = saved.top + (el.scrollHeight - saved.h);
-      before.current = null;
-      return;
-    }
-    if (saved && finishedHistoryRead?.anchor === saved && !saved.readers) {
-      before.current = saved = null;
+    if (saved) {
+      const front = visibleHistoryFront(el, firstLiveSeq);
+      if (front.live < saved.front.live || front.stretch < saved.front.stretch ||
+        (front.stretch === saved.front.stretch && front.stretchSeq < saved.front.stretchSeq)) {
+        el.scrollTop = saved.top + (el.scrollHeight - saved.h);
+        before.current = null;
+        return;
+      }
+      if (projectedLivePage) saved.pages.delete(projectedLivePage);
+      if (projectedOtherPage) saved.pages.delete(projectedOtherPage);
+      // The committed page can be wholly outside the rendered stretch. In that case there is no
+      // prepend to offset, but the page still settles the anchor.
+      if (!saved.readers && !saved.pages.size) before.current = saved = null;
     }
     const place = kept.current.place;
     // the line it was at, `offset` under the view's top again; until that line comes in, the chat opens at its end as
@@ -830,7 +852,7 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
       saved.h = el.scrollHeight;
       saved.top = el.scrollTop;
     }
-  }, [tr.items, earlier.stretches, pending, outbox, tr.streaming, interactions.length, finishedHistoryRead]);
+  }, [tr.items, earlier.stretches, earlier.projectedLivePage, earlier.projectedOtherPage, pending, outbox, tr.streaming, interactions.length, historyScope, firstLiveSeq]);
 
   // A card that unfolds (#1124): following holds off for UNFOLD_PAUSE while the clicked row stays where it was on
   // screen (anchoredScroll), then picks up again if the end is still near; a long card opened at the end stays put to
@@ -993,7 +1015,7 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
     const el = scroller.current;
     if (!el) return;
     const saved = before.current;
-    if (saved?.el === el && saved.chat === railChat.current) saved.top = el.scrollTop;
+    if (saved?.el === el && saved.scope === historyScope) saved.top = el.scrollTop;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     const delta = el.scrollTop - lastTop.current;
     lastTop.current = el.scrollTop;

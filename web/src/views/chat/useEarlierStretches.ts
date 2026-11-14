@@ -14,7 +14,8 @@ export interface LiveTranscript {
   hasMore: boolean;
   loading: boolean;
   loadingEarlier: boolean;
-  loadEarlier: () => Promise<void>;
+  earlierPage?: symbol;
+  loadEarlier: () => Promise<symbol | undefined>;
   expandFold: (fold: Item) => Promise<void>;
 }
 
@@ -34,7 +35,10 @@ export interface EarlierStretch {
 export interface StretchesReport {
   hasMore: boolean;
   loading: boolean;
-  loadEarlier: () => Promise<void>;
+  loadEarlier: () => Promise<symbol | undefined>;
+  /** Identities of the live and previous-session pages accounted for in the rendered stretches. */
+  projectedLivePage?: symbol;
+  projectedOtherPage?: symbol;
   /** The earlier stretches drawn, oldest first: a new array whenever what they draw changes. */
   stretches: EarlierStretch[];
   /** Moves each time a page that failed may be asked for again (its wait is over): the chat asks if its top is in view. */
@@ -66,7 +70,9 @@ export interface Stitched {
   hasMore: boolean;
   loadingEarlier: boolean;
   /** Loads what comes next going back: the live session's older page, or the next stretch's. */
-  loadEarlier: () => Promise<void>;
+  loadEarlier: () => Promise<symbol | undefined>;
+  projectedLivePage?: symbol;
+  projectedOtherPage?: symbol;
   /** EarlierStretches' `due`: 0 for a conversation that never switched. */
   due: number;
   /** The stretches' module's props; null for a conversation that never switched. */
@@ -89,7 +95,7 @@ export function useEarlierStretches(mid: string, sid: string, history: readonly 
     () => (key ? { mid, sid, scope, history: legs, live, report: hear } : null),
     // `live` is read through: its items, pages and loads are what the module plans with
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mid, sid, scope, key, legs, hear, live.items, live.hasMore, live.loading, live.loadEarlier, live.expandFold],
+    [mid, sid, scope, key, legs, hear, live.items, live.hasMore, live.loading, live.loadEarlier, live.expandFold, live.earlierPage],
   );
   return {
     liveItems: own ?? live.items,
@@ -100,6 +106,8 @@ export function useEarlierStretches(mid: string, sid: string, history: readonly 
     hasMore: key ? (report?.hasMore ?? true) : live.hasMore,
     loadingEarlier: live.loadingEarlier || Boolean(report?.loading),
     loadEarlier: report?.loadEarlier ?? live.loadEarlier,
+    projectedLivePage: key ? report?.projectedLivePage : live.earlierPage,
+    projectedOtherPage: report?.projectedOtherPage,
     due: report?.due ?? 0,
     host,
   };

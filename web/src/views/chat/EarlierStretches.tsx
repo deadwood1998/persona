@@ -43,7 +43,7 @@ const NO_SUBAGENTS: never[] = [];
 /** `offscreen`: ChatView's (an exchange off screen skips drawing, SegmentView `offscreen`). */
 export default memo(function EarlierStretches({ mid, sid, scope, history, live, report, offscreen }: StretchesHost & { offscreen?: Offscreen }) {
   const windows = useMemo(() => stretchWindows(history, sid), [history, sid]);
-  const [state, setState] = useState<{ scope: string; stores: Record<string, Store> }>({ scope, stores: NO_STORES });
+  const [state, setState] = useState<{ scope: string; stores: Record<string, Store>; page?: symbol }>({ scope, stores: NO_STORES });
   const stores = state.scope === scope ? state.stores : NO_STORES;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -150,16 +150,18 @@ export default memo(function EarlierStretches({ mid, sid, scope, history, live, 
       const page = await api<ItemsPage>(`${sessionPath(mid, w.sid)}/items?${PAGE}${first ? `&before_seq=${first.seq}` : ""}`);
       if (g !== gen.current) return;
       const got = page.items ?? [];
+      const read = got.some((item) => !first || item.seq < first.seq) ? Symbol() : undefined;
       setState((st) => {
         const base = st.scope === at ? st.stores : NO_STORES;
         const cur = base[w.sid];
         // an empty page ends it whatever it says: asking again from the same place would get the same
-        return { scope: at, stores: { ...base, [w.sid]: { items: mergeItems(cur?.items ?? [], got), hasMore: Boolean(page.has_more) && got.length > 0, ready: true } } };
+        return { scope: at, page: read, stores: { ...base, [w.sid]: { items: mergeItems(cur?.items ?? [], got), hasMore: Boolean(page.has_more) && got.length > 0, ready: true } } };
       });
       setError("");
       retryAt.current = 0;
       wait.current = 0;
       stopRetry();
+      return read;
     } catch (e) {
       if (g !== gen.current) return;
       wait.current = Math.min(wait.current ? wait.current * 2 : RETRY_MS, RETRY_MAX_MS);
@@ -188,7 +190,10 @@ export default memo(function EarlierStretches({ mid, sid, scope, history, live, 
 
   // what the chat around them reads (useEarlierStretches): before paint, so it keeps its place as they come in above
   const hasMore = plan.next !== undefined;
-  useLayoutEffect(() => report(scope, { hasMore, loading, loadEarlier, stretches, due }), [report, scope, hasMore, loading, loadEarlier, stretches, due]);
+  const projectedLivePage = live.earlierPage;
+  const projectedOtherPage = state.scope === scope ? state.page : undefined;
+  useLayoutEffect(() => report(scope, { hasMore, loading, loadEarlier, stretches, due, projectedLivePage, projectedOtherPage }),
+    [report, scope, hasMore, loading, loadEarlier, stretches, due, projectedLivePage, projectedOtherPage]);
 
   if (!stretches.length && !error) return null;
   return (
@@ -223,7 +228,7 @@ const StretchLines = memo(function StretchLines({ mid, stretch, offscreen }: { m
   return (
     <ChatContext.Provider value={ctx}>
       <ChatActionsContext.Provider value={readOnly}>
-        <div className="contents" data-engine-stretch={sid}>
+        <div className="contents" data-engine-stretch={sid} data-stretch-index={stretch.index} data-stretch-first={items[0]?.seq}>
           {lines.map((line) => (
             <ChatLineView key={line.id} line={line} mid={mid} sid={sid} expandFold={stretch.expandFold} offscreen={offscreen?.(line)} />
           ))}

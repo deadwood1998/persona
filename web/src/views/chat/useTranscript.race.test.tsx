@@ -69,7 +69,7 @@ describe("useTranscript older pages", () => {
     render("A");
     await answer(["/m/A/items?", "turns=2"], { items: [item("a10", 10)], has_more: true, to_seq: 10 });
     expect(shown.hasMore).toBe(true);
-    let pending!: Promise<void>;
+    let pending!: Promise<symbol | undefined>;
     act(() => void (pending = shown.loadEarlier()));
     expect(shown.loadingEarlier).toBe(true);
 
@@ -87,7 +87,7 @@ describe("useTranscript older pages", () => {
   it("does not show the last conversation's older-page failure in the new one", async () => {
     render("A");
     await answer(["/m/A/items?", "turns=2"], { items: [item("a10", 10)], has_more: true, to_seq: 10 });
-    let pending!: Promise<void>;
+    let pending!: Promise<symbol | undefined>;
     act(() => void (pending = shown.loadEarlier()));
     render("B");
     await answer(["/m/B/items?", "turns=2"], { items: [item("b50", 50)], has_more: true, to_seq: 50 });

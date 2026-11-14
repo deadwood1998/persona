@@ -21,8 +21,9 @@ const transcript = vi.hoisted(() => ({
   error: "",
   hasMore: true,
   loadingEarlier: false,
+  earlierPage: undefined as symbol | undefined,
   streaming: "",
-  loadEarlier: (() => Promise.resolve()) as () => Promise<void>,
+  loadEarlier: (() => Promise.resolve(undefined)) as () => Promise<symbol | undefined>,
 }));
 vi.mock("./useTranscript", () => ({ useTranscript: () => transcript }));
 const rail = vi.hoisted(() => ({ props: null as React.ComponentProps<typeof NavRail> | null }));
@@ -74,8 +75,8 @@ const background: Item[] = [
 
 async function open(view: { scrollHeight: number; clientHeight: number }, hasMore = true) {
   size = view;
-  const loadEarlier = vi.fn(() => Promise.resolve());
-  Object.assign(transcript, { items: [], hasMore: false, loading: true, loadingEarlier: false, loadEarlier });
+  const loadEarlier = vi.fn(() => Promise.resolve(undefined));
+  Object.assign(transcript, { items: [], hasMore: false, loading: true, loadingEarlier: false, earlierPage: undefined, streaming: "", loadEarlier });
   act(() => applyCompleteSessions([row]));
   act(() => root.render(<ChatView mid="mac" sid="s1" inPage />));
   // the hub's first page comes in
@@ -111,8 +112,8 @@ describe("ChatView older pages", () => {
     expect(rail.props?.ticks.map((tick) => tick.id)).toContain("seg:distant#0");
     const scroller = host.querySelector<HTMLElement>("[data-chat-scroll]")!;
     scroller.scrollTop = 3_200;
-    let release!: () => void;
-    const pending = new Promise<void>((resolve) => { release = resolve; });
+    let release!: (page: symbol) => void;
+    const pending = new Promise<symbol>((resolve) => { release = resolve; });
     const loadEarlier = vi.fn(() => pending);
     // The underlying read started outside the scroll loader, so it did not take an anchor.
     Object.assign(transcript, { loadEarlier, loadingEarlier: true });
@@ -129,18 +130,22 @@ describe("ChatView older pages", () => {
     scroller.scrollTop = 3_250;
     act(() => scroller.dispatchEvent(new Event("scroll")));
 
+    // Complete the HTTP read in a separate commit while React still shows the old rows.
+    const page = Symbol();
+    await act(async () => { release(page); });
+    expect(scroller.scrollTop).toBe(3_250);
+    await act(async () => { await vi.advanceTimersByTimeAsync(16); });
+
     // Only the intermediate page has arrived. Its prepended height must be offset before
     // navigation is allowed to jump to the (still absent) selected input.
     size.scrollHeight = 6_700;
     Object.assign(transcript, {
       items: [{ ...background[0], id: "intermediate#0", seq: 5 }, ...background],
       hasMore: false,
+      earlierPage: page,
       loadingEarlier: false,
     });
-    await act(async () => {
-      root.render(<ChatView mid="mac" sid="s1" inPage />);
-      release();
-    });
+    act(() => root.render(<ChatView mid="mac" sid="s1" inPage />));
     expect(scroller.scrollTop).toBe(3_800);
   });
 });

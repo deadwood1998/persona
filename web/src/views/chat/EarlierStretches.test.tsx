@@ -20,7 +20,7 @@ const T0 = Date.parse("2026-11-12T09:00:00Z");
 const at = (m: number) => new Date(T0 + m * 60_000).toISOString();
 const item = (seq: number, m: number): Item => ({ id: `i${seq}#0`, seq, role: "assistant", kind: "text", text: `at ${m}`, ts: at(m) });
 const noop = async () => {};
-const live = (items: Item[]): LiveTranscript => ({ items, hasMore: false, loading: false, loadingEarlier: false, loadEarlier: noop, expandFold: noop });
+const live = (items: Item[]): LiveTranscript => ({ items, hasMore: false, loading: false, loadingEarlier: false, loadEarlier: async () => undefined, expandFold: noop });
 const report = () => {};
 
 let host: HTMLDivElement;
