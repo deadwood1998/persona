@@ -101,8 +101,9 @@ func TestTaskOutcomeRecorded(t *testing.T) {
 		t.Fatalf("log again = %v", log)
 	}
 
-	// Handed to an agent for the same todo, the outcome rows are not passed off as the user's own calls.
-	if res, _ := s.TodoHandoff(context.Background(), TodoHandoff{TodoID: todo.ID, Text: "再看看"}); !strings.Contains(res.Text, "Agent 做完时记的，不是用户定的") {
+	// This fixture records an outcome without closing the todo. On handoff, it is an earlier phase's record,
+	// not a current completion or a decision the user made.
+	if res, _ := s.TodoHandoff(context.Background(), TodoHandoff{TodoID: todo.ID, Text: "再看看"}); !strings.Contains(res.Text, "前一阶段的记录，不代表待办当前已完成，也不是用户定的") {
 		t.Fatalf("decisions handed on = %q", res.Text)
 	}
 

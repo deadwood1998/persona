@@ -1,4 +1,5 @@
 import Foundation
+import PersonaWire
 
 // The To-dos page's sections (#3206, docs/assistant/todo-status-sop.md): each to-do's place comes from real signals only —
 // its agents' sessions (alive, running, asking), its PR / delivery state, the latest task_review verdict and when it last
@@ -231,6 +232,17 @@ nonisolated enum TodoTriageLogic {
     static func checksAsOpen(_ todo: TodoItem, _ t: TodoTriage?) -> Bool {
         if todo.doneAt == nil { return true }
         return todo.failedToStart && t?.rule == .failedStart && t?.section == .waiting
+    }
+
+    /// `checksAsOpen` for a checkbox drawn outside the To-dos list (a meeting's action item, #6563), with the triage the
+    /// list gives the to-do. Only a closed failed start needs it, so only then are `all` (whose finished work may have
+    /// superseded it) and `lookup` read.
+    static func checksAsOpen(_ todo: TodoItem, among all: () -> [TodoItem], lookup: () -> TodosLogic.SessionLookup?,
+                             now: Date, calendar: Calendar = .current) -> Bool {
+        guard todo.doneAt != nil, todo.failedToStart else { return todo.doneAt == nil }
+        let t = triage(todo, lookup: lookup(), now: now, superseded: supersededFailedStarts(all()).contains(todo.id),
+                       calendar: calendar)
+        return checksAsOpen(todo, t)
     }
 
     /// Where a to-do stands for every count of open work (#3331): the To-dos page's "Not done" and the assistant's

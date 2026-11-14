@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import PersonaWire
 
 /// How far a todo's work got, as the hub sends it in `TodoItem.stage` (#2776): the six steps, in order. A hub that
 /// sends nothing, or a name this build does not know (an older or a newer hub), has none, and no stage bar is drawn.
@@ -565,15 +566,18 @@ extension APIClient {
         public var remindAt: Date??
         /// "" normal, "high", "low".
         public var priority: String?
+        /// A knowledge-base project's slug, "" for none (#2581); nil leaves it as it is.
+        public var project: String?
 
-        public init(due: Due? = nil, remindAt: Date?? = nil, priority: String? = nil) {
+        public init(due: Due? = nil, remindAt: Date?? = nil, priority: String? = nil, project: String? = nil) {
             self.due = due
             self.remindAt = remindAt
             self.priority = priority
+            self.project = project
         }
 
         enum CodingKeys: String, CodingKey {
-            case priority
+            case priority, project
             case dueAt = "due_at", dueDate = "due_date", remindAt = "remind_at"
         }
 
@@ -589,6 +593,7 @@ extension APIClient {
                 if let d = remindAt { try c.encode(d, forKey: .remindAt) } else { try c.encodeNil(forKey: .remindAt) }
             }
             if let priority { try c.encode(priority, forKey: .priority) }
+            if let project { try c.encode(project, forKey: .project) }
         }
     }
 

@@ -294,14 +294,12 @@ func (s *Service) machineViolationWith(machineID string, lim admissionLimits, cl
 		return admissionMessage("assistant-tasks.admission_memory", i18n.Args{
 			"available": humanBytes(facts.available), "limit": humanBytes(lim.minMemory)})
 	}
-	if facts.claudeProcs != nil {
-		// The line bounds agents actually working a turn, not OS processes: a session that finished, parks or stays
-		// idle keeps its claude process alive for hours, and counting those fills the machine while nothing runs. The
-		// fleet's last session snapshot says how many sessions are working; only when it has no snapshot for this
-		// machine (the fleet bus is off or the machine never reported a list) does the node's process count stand in.
-		if working, has := s.workingSessions(machineID); has {
-			facts.claudeProcs = &working
-		}
+	// The line bounds agents actually working a turn, not OS processes: a session that finished, parks or stays idle
+	// keeps its claude process alive for hours, and counting those fills the machine while nothing runs. The fleet's
+	// last session snapshot says how many sessions are working; only when it has no snapshot for this machine (the
+	// fleet bus is off or the machine never reported a list) does the node's process count stand in.
+	if working, has := s.workingSessions(machineID); has {
+		facts.claudeProcs = &working
 	}
 	if facts.claudeProcs != nil && *facts.claudeProcs+claims >= lim.maxProcs {
 		return admissionMessage("assistant-tasks.admission_procs", i18n.Args{
@@ -427,6 +425,25 @@ func (s *Service) reroutePlanTask(ctx context.Context, t *PlanTask, from, alt De
 	t.noteWhy(note)
 }
 
+// admissionDeniedError marks a refusal made by the admission gate (machine resources or direction capacity), as
+// against a launcher or shell failure. A plan task that hits one is queued and retried by the admission queue loop
+// instead of being failed (task_queue.go, #6909); an agent_start tool call still returns it to the caller directly.
+type admissionDeniedError struct {
+	// msg is the user-facing admission_refused sentence for the request's language.
+	msg *i18n.Message
+	// reason is the specific gate line (load, memory, process or direction cap) the task is waiting on.
+	reason *i18n.Message
+}
+
+func (e *admissionDeniedError) Error() string { return e.msg.Error() }
+func (e *admissionDeniedError) Unwrap() error { return e.msg }
+
+// isAdmissionDenied reports whether err is (or wraps) an admission-gate refusal.
+func isAdmissionDenied(err error) bool {
+	var denied *admissionDeniedError
+	return errors.As(err, &denied)
+}
+
 // admissionRefused words a fixed-policy denial, naming the least-loaded alternative when one exists, and records one
 // structured log line so a blocked dispatch is visible in the hub log without reading the todo ledger. The line carries
 // only the machine id, the direction id (empty for an agent_start check), the reason's stable i18n key and its numeric
@@ -448,8 +465,11 @@ func (s *Service) admissionRefused(ctx context.Context, machineID, direction str
 		recommend = i18n.T(s.lang(ctx), "assistant-tasks.admission_recommend", i18n.Args{
 			"machine": firstNonEmpty(alt.Name, alt.ID)})
 	}
-	return admissionMessage("assistant-tasks.admission_refused", i18n.Args{
-		"machine": machine, "reason": reason.Text(s.lang(ctx)), "recommend": recommend})
+	return &admissionDeniedError{
+		msg: admissionMessage("assistant-tasks.admission_refused", i18n.Args{
+			"machine": machine, "reason": reason.Text(s.lang(ctx)), "recommend": recommend}),
+		reason: reason,
+	}
 }
 
 // checkAgentStart is the agent_start tool's machine-level check without a claim: run it before the phone confirmation
