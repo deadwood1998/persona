@@ -6,6 +6,7 @@ import SwiftUI
 import UIKit
 #endif
 import UserNotifications
+import PersonaWire
 
 /// App-wide state: server pairing, live connection, machines, sessions, interactions and per-session chats.
 @Observable
@@ -485,6 +486,10 @@ final class AppModel {
         }
         #if os(iOS)
         HomeWidgetWriter.shared.source = { [weak self] in self?.homeSnapshotSource() }
+        // A tool call asked iOS for a source's permission (#7659): a refused source's tools leave the hub's list.
+        NotificationCenter.default.addObserver(forName: .phoneAccessAnswered, object: nil, queue: .main) { @Sendable [weak self] _ in
+            MainActor.assumeIsolated { self?.registerPhone() }
+        }
         #endif
         #if os(iOS) || os(visionOS)
         if registryUnreadable {
@@ -978,6 +983,14 @@ final class AppModel {
         guard let m = machine(ref) else { return nil }
         if let c = m.computer, c.enabled, c.screenSharing, let v = c.screenVideo, v.advertised { return v }
         if let b = m.browser, b.enabled, b.screenSharing, let v = b.screenVideo, v.advertised { return v }
+        return nil
+    }
+    /// Pixel scrolling as the extension showing this Mac's screen reports it (#7775): whether its node reads scroll records
+    /// and Persona Input may post them; nil when no shown extension's node reads them.
+    func screenInput(_ ref: MachineRef) -> MachineScreenInput? {
+        guard let m = machine(ref) else { return nil }
+        if let c = m.computer, c.enabled, c.screenSharing, let i = c.screenInput, i.reads { return i }
+        if let b = m.browser, b.enabled, b.screenSharing, let i = b.screenInput, i.reads { return i }
         return nil
     }
     nonisolated static func advertisesVideo(_ m: Machine) -> Bool {
@@ -1806,6 +1819,15 @@ final class AppModel {
             // right after the catch-up, so the answer goes on being written instead of blanking for a moment.
             if plan.refetch { chat(key).dropLive() }
             link.live.send(subscribeMessage(key))
+            // After a full refresh the chat also reads what came after its `covered` itself, as the web does (#4315):
+            // the subscription's backlog is the only other way those lines arrive, and it can fail (the node not back
+            // yet after a hub restart answers it with an error frame) or never come. Messages sent from another device
+            // while this socket was down then stayed missing until the next push. Both merge by id and seq, and `fill`
+            // collapses concurrent reads for the chat. A chat with nothing yet gets its latest page from the subscription.
+            if plan.refetch, chat(key).covered > 0 {
+                let store = chat(key)
+                Task { await fill(key, shouldApply: { self.isSubscribed(key) && self.existingChat(key) === store }) }
+            }
         }
         guard plan.refetch else { return }
         // Questions answered on the computer while the socket was down are gone from the hub: drop their cards.
