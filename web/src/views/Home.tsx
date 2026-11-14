@@ -1,5 +1,6 @@
 // Overview: what needs you, what is running, what just finished — Beautiful UI's Task Rows — and the computers.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SESSIONS_HIERARCHY_FEATURE } from "../lib/child-sessions";
 import { homeKey } from "../lib/folded-rows";
 import { ago, interactionCanAnswer, sessionCan, sessionPreview, shortDuration, sourceSubtitle, sessionTitle, stateOf, tabLabel } from "../lib/format";
 import { usePendingLine } from "../lib/card-answer";
@@ -61,7 +62,9 @@ export function Home({ onNewAgent, onToggleSidebar }: { onNewAgent: () => void; 
   // may not have been read yet, or its read failed: then nobody knows how many agents there are, and the page says so
   // instead of counting none. `whole`: it holds every agent, so each computer's can be counted.
   const { status: list, whole } = useScopedAgentListStatus();
-  const hubAgentCounts = useStore((s) => s.sessionCounts?.active_agents_by_machine);
+  // Only hierarchy hubs receive the roots counts that exclude folded children and Assistant conversations.
+  const hubAgentCounts = useStore((s) => s.features.includes(SESSIONS_HIERARCHY_FEATURE)
+    ? s.sessionCounts?.active_agents_by_machine : undefined);
   const agentCounts = useMemo(() => {
     if (list !== "loaded") return undefined;
     if (!whole) return hubAgentCounts && new Map(Object.entries(hubAgentCounts));

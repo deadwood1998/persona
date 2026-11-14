@@ -50,12 +50,18 @@ type Answer = "ok" | "fail" | "hold";
 // not all of them
 let page: Answer, full: Answer, more: boolean, roster: ManagerList | null;
 let held: { what: "page" | "full"; go: (ok: boolean) => void }[];
-let reads: { page: number; full: number };
+let reads: { page: number; full: number; counts: URLSearchParams[] };
 function hub(input: RequestInfo | URL): Promise<Response> {
   const url = new URL(String(input), "http://hub.example.com");
   const path = url.pathname;
   if (path === "/api/v1/sessions") {
-    if (url.searchParams.has("counts")) return Promise.resolve(json(counts));
+    if (url.searchParams.has("counts")) {
+      reads.counts.push(url.searchParams);
+      const { active_agents_by_machine, ...otherCounts } = counts;
+      return Promise.resolve(json(url.searchParams.get("roots") === "1"
+        ? { ...otherCounts, active_agents_by_machine }
+        : otherCounts));
+    }
     const what = url.searchParams.get("summary") === "0" ? "full" : "page";
     reads[what]++;
     const answer = what === "full" ? full : page;
@@ -83,13 +89,15 @@ let root: Root;
 const flush = async () => {
   for (let i = 0; i < 12; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 };
-async function hello() {
+async function hello({ hierarchy = false } = {}) {
   act(() => connect());
   act(() => {
     FakeSocket.last.readyState = 1;
     FakeSocket.last.onopen?.();
   });
-  act(() => FakeSocket.last.onmessage?.({ data: JSON.stringify({ type: "hello", server_version: "v1", features: ["sessions_list", "sessions_lookup"] }) }));
+  const features = ["sessions_list", "sessions_lookup"];
+  if (hierarchy) features.push("sessions_hierarchy");
+  act(() => FakeSocket.last.onmessage?.({ data: JSON.stringify({ type: "hello", server_version: "v1", features }) }));
   act(() => flushPushes());
   await flush();
   act(() => root.render(<Home onNewAgent={() => {}} onToggleSidebar={() => {}} />));
@@ -109,7 +117,7 @@ beforeEach(() => {
   more = false;
   roster = null;
   held = [];
-  reads = { page: 0, full: 0 };
+  reads = { page: 0, full: 0, counts: [] };
   reset();
   resetRoster();
   resetManagerChoice();
@@ -208,11 +216,23 @@ describe("Overview on a hub that pages its Agents list, with one assistant", () 
   it("shows the complete Agent count without downloading more pages", async () => {
     counts.active_agents_by_machine = { mac: 2 };
     more = true;
-    await hello();
+    await hello({ hierarchy: true });
     expect(machineLine()).toBe("2 个 Agent · macOS 26.1");
+    expect(reads.counts.some((params) => params.get("roots") === "1")).toBe(true);
     expect(reads.page).toBe(1);
     expect(reads.full).toBe(0);
     // the summary is the hub's count of every agent, not of the page
+    expect(summaryText()).toBe("1 个工作中。");
+  });
+
+  it("omits the machine count on a paging hub without hierarchy support", async () => {
+    more = true;
+    await hello();
+    expect(reads.counts.length).toBeGreaterThan(0);
+    expect(reads.counts.some((params) => params.has("roots"))).toBe(false);
+    expect(machineLine()).toBe("macOS 26.1");
+    expect(reads.page).toBe(1);
+    expect(reads.full).toBe(0);
     expect(summaryText()).toBe("1 个工作中。");
   });
 });
