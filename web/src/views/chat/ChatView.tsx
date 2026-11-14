@@ -719,7 +719,36 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
   }, []);
   const lastTop = useRef(0);
   const dragging = useRef(false);
-  const before = useRef<{ h: number; top: number } | null>(null);
+  const firstLiveSeq = tr.items[0]?.seq ?? Infinity;
+  const historyFront = useMemo(() => {
+    const oldestStretch = earlier.stretches.find((s) => s.items.length);
+    return { live: firstLiveSeq, stretch: oldestStretch?.index ?? Infinity, stretchSeq: oldestStretch?.items[0]?.seq ?? Infinity };
+  }, [earlier.stretches, firstLiveSeq]);
+  const frontNow = useRef(historyFront);
+  frontNow.current = historyFront;
+  const before = useRef<{
+    el: HTMLDivElement; chat: string; front: typeof historyFront; h: number; top: number; readers: number;
+  } | null>(null);
+  const loadWithScrollAnchor = useCallback(async (load: () => Promise<void>) => {
+    const el = scroller.current;
+    if (!el) return load();
+    // Scroll, search and the rail may all wait for the same page. A join can establish the anchor
+    // if the read had none, and a caller returning early must not clear it for the others.
+    if (before.current?.el !== el || before.current.chat !== railChat.current) {
+      before.current = { el, chat: railChat.current, front: frontNow.current, h: el.scrollHeight, top: el.scrollTop, readers: 0 };
+    }
+    const saved = before.current;
+    saved.readers++;
+    try {
+      await load();
+    } finally {
+      saved.readers--;
+      // Forget a page that produced no rows, without clearing a newer anchor.
+      if (!saved.readers) requestAnimationFrame(() => {
+        if (before.current === saved && !saved.readers) before.current = null;
+      });
+    }
+  }, []);
   const first = useRef(true);
   // Back from an Agent's page this conversation handed work to (#5096): where the chat was, kept on its history entry
   // (lib/handoff.ts); it opens there instead of at the end, once, and goes to the end if that line does not come in time.
@@ -736,6 +765,7 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
 
   useEffect(() => {
     lastTop.current = 0;
+    before.current = null;
     if (kept.current.back) {
       if (kept.current.place) follow(false); // still waiting for its line: not pulled to the end meanwhile
       return;
@@ -764,8 +794,13 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
   useLayoutEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    if (before.current) {
-      el.scrollTop = before.current.top + (el.scrollHeight - before.current.h);
+    let saved = before.current;
+    if (saved && (saved.el !== el || saved.chat !== railChat.current)) {
+      before.current = saved = null;
+    }
+    if (saved && (historyFront.live < saved.front.live || historyFront.stretch < saved.front.stretch ||
+      (historyFront.stretch === saved.front.stretch && historyFront.stretchSeq < saved.front.stretchSeq))) {
+      el.scrollTop = saved.top + (el.scrollHeight - saved.h);
       before.current = null;
       return;
     }
@@ -774,6 +809,7 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
     // it always does (and goes to the line once it is there)
     const row = place && el.querySelector(`[data-line="${CSS.escape(place.line!)}"]`)?.firstElementChild;
     if (place && row) {
+      before.current = null;
       kept.current.place = undefined;
       el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - place.offset;
       first.current = false;
@@ -784,6 +820,12 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
     if (atEnd.current || first.current) {
       el.scrollTop = el.scrollHeight;
       if (tr.items.length) first.current = false;
+    }
+    // Live updates below the viewport can change the height while a history page is held.
+    // Record that change without spending the anchor needed for the eventual prepend.
+    if (saved) {
+      saved.h = el.scrollHeight;
+      saved.top = el.scrollTop;
     }
   }, [tr.items, earlier.stretches, pending, outbox, tr.streaming, interactions.length]);
 
@@ -941,16 +983,14 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
   const loadEarlierNearTop = () => {
     const el = scroller.current;
     if (!el || el.scrollTop >= 300 || !earlier.hasMore || earlier.loadingEarlier || first.current) return;
-    before.current = { h: el.scrollHeight, top: el.scrollTop };
-    void earlier.loadEarlier().finally(() => {
-      // nothing came: forget the anchor
-      requestAnimationFrame(() => (before.current = null));
-    });
+    void loadWithScrollAnchor(earlier.loadEarlier);
   };
 
   const onScroll = () => {
     const el = scroller.current;
     if (!el) return;
+    const saved = before.current;
+    if (saved?.el === el && saved.chat === railChat.current) saved.top = el.scrollTop;
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     const delta = el.scrollTop - lastTop.current;
     lastTop.current = el.scrollTop;
@@ -1288,12 +1328,7 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
         // Reuse ordinary backward pages, keeping history contiguous rather than inserting an isolated window.
         await loadEarlierForSearch({
           get: () => trNow.current,
-          load: async () => {
-            const sc = scroller.current;
-            if (sc && !trNow.current.loadingEarlier) before.current ??= { h: sc.scrollHeight, top: sc.scrollTop };
-            try { await trNow.current.loadEarlier(); }
-            finally { requestAnimationFrame(() => (before.current = null)); }
-          },
+          load: () => loadWithScrollAnchor(trNow.current.loadEarlier),
           frame: nextFrame,
           stopped: () => cancelled() || Date.now() >= deadline || containsInput(trNow.current.items, target),
           onPage: () => {},
@@ -1315,7 +1350,7 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
       if (result === "missing") { toast(t("chat-navrail.target_failed"), "error"); return; }
       landRow(result.value, -12);
     },
-    [mid, sid, inputIndex, follow, landRow, stopGlide],
+    [mid, sid, inputIndex, follow, landRow, stopGlide, loadWithScrollAnchor],
   );
   const railSource = useMemo<NavRailSource>(() => ({ ticks: railTicks, total: inputIndex?.total, select: railJump }), [railTicks, inputIndex?.total, railJump]);
   // the calls with a terminal result: a subagent call without one is one the agent still waits on (the bar's step)
@@ -1552,23 +1587,14 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
   const loadForSearch = useCallback(async (onPage: (n: number) => void, stopped: () => boolean): Promise<LoadOutcome> => {
     const outcome = await loadEarlierForSearch({
       get: () => trNow.current,
-      load: async () => {
-        const sc = scroller.current;
-        if (sc) before.current = { h: sc.scrollHeight, top: sc.scrollTop };
-        try {
-          await trNow.current.loadEarlier();
-        } finally {
-          // nothing came: forget the anchor, or the next change of the chat jumps to it
-          requestAnimationFrame(() => (before.current = null));
-        }
-      },
+      load: () => loadWithScrollAnchor(trNow.current.loadEarlier),
       frame: nextFrame,
       stopped,
       onPage,
     });
     const key = SEARCH_NOTICE[outcome];
     return key ? t(key) : null;
-  }, []);
+  }, [loadWithScrollAnchor]);
   // a message to open the chat at: a search hit's (`?at=`, #6283) or a forward card's original (#3899, lib/forward.ts
   // jumpWhenOpen). Brought into view once the transcript is in and holds it; one further up is paged back for, as "Load
   // earlier and keep searching" does (at most SEARCH_PAGES pages, the reader scrolling away or another landing stops
