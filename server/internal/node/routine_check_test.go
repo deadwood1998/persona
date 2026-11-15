@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/nwverse/persona/server/internal/proto"
 )
@@ -40,5 +42,24 @@ func TestRoutineCheck(t *testing.T) {
 				t.Fatalf("result = %+v, error = %v", result, err)
 			}
 		})
+	}
+}
+
+func TestRoutineCheckDeadlineAfterShellExit(t *testing.T) {
+	if runtime.GOOS == "windows" || loginShellProgram() == "" {
+		t.Skip("requires a Unix shell")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	raw, err := json.Marshal(proto.RoutineCheckParams{Command: "sleep 30 & exit 0", Timeout: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	if _, err := routineCheck(ctx, raw); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timeout = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 1500*time.Millisecond {
+		t.Fatalf("background child kept the check waiting for %s", elapsed)
 	}
 }

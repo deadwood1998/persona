@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nwverse/persona/server/internal/osproc"
@@ -34,14 +35,26 @@ func routineCheck(ctx context.Context, raw json.RawMessage) (proto.RoutineCheckR
 	if err := cmd.Start(); err != nil {
 		return proto.RoutineCheckResult{}, err
 	}
-	err := cmd.Wait()
-	// Also stop children left behind by a shell that exited before its deadline.
-	_ = osproc.StopGroup(cmd.Process.Pid, true)
+	// exec stops watching the deadline once the shell exits, even if a child still holds the output open.
+	waited := make(chan struct{})
+	var watch sync.WaitGroup
+	stop := sync.OnceFunc(func() { _ = osproc.StopGroup(cmd.Process.Pid, true) })
+	watch.Go(func() {
+		select {
+		case <-ctx.Done():
+			stop()
+		case <-waited:
+		}
+	})
+	err := cmd.Wait() // killGroupOnCancel also sets a bounded WaitDelay.
+	close(waited)
+	watch.Wait()
+	stop() // A child may have closed its output and kept running.
 	if ctx.Err() != nil {
 		return proto.RoutineCheckResult{}, ctx.Err()
 	}
 	var exit *exec.ExitError
-	if err != nil && !errors.As(err, &exit) {
+	if err != nil && !errors.Is(err, exec.ErrWaitDelay) && !errors.As(err, &exit) {
 		return proto.RoutineCheckResult{}, err
 	}
 	return proto.RoutineCheckResult{

@@ -32,17 +32,19 @@ func (h *routineCheckHub) DeviceCall(ctx context.Context, p DeviceCall) (json.Ra
 
 func TestRoutineCheckRun(t *testing.T) {
 	for _, tc := range []struct {
-		name                    string
-		result                  proto.RoutineCheckResult
-		err                     error
-		policy                  string
-		manual, skipped, warned bool
+		name                                   string
+		result                                 proto.RoutineCheckResult
+		err                                    error
+		policy                                 string
+		manual, retried, once, skipped, warned bool
 	}{
 		{name: "pass"},
 		{name: "skip", result: proto.RoutineCheckResult{ExitCode: 1, Reason: "holiday"}, skipped: true},
 		{name: "continue after timeout", err: context.DeadlineExceeded, warned: true},
 		{name: "skip when offline", err: errors.New("offline"), policy: "skip", skipped: true},
 		{name: "manual ignores skip", result: proto.RoutineCheckResult{ExitCode: 1}, manual: true},
+		{name: "one-off ignores skip", result: proto.RoutineCheckResult{ExitCode: 1}, once: true},
+		{name: "retry continues the admitted run", result: proto.RoutineCheckResult{ExitCode: 1}, retried: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := readyHub()
@@ -51,17 +53,23 @@ func TestRoutineCheckRun(t *testing.T) {
 			s := withSettings(t, f, New(Options{Hub: h, Store: func() Store { return st }, Logf: testLogf(t)}))
 			task := Task{ID: "test", Title: "Brief", Prompt: "Summarize", Repeat: repeatDaily, Time: "09:00", Facts: tc.skipped,
 				RunIf: &routineCheck{RoutineCheckParams: proto.RoutineCheckParams{Command: "check", Timeout: 1}, OnError: tc.policy}}
-			setTasks(s, task)
 			now := time.Now()
-			if _, err := s.runTask(task, now, now, tc.manual, false); err != nil {
+			if tc.once {
+				task.Repeat, task.At = repeatOnce, now
+			}
+			setTasks(s, task)
+			if _, err := s.runTask(task, now, now, tc.manual, tc.retried); err != nil {
 				t.Fatal(err)
 			}
 			r := lastRunOf(t, s, task.ID)
 			if r.ConditionSkipped != tc.skipped || (r.RunIfError != "") != tc.warned || (r.Status == runSkipped) != tc.skipped {
 				t.Fatalf("unexpected run: %+v", r)
 			}
-			if (h.calls == 0) != tc.manual {
+			if (h.calls == 0) != (tc.manual || tc.once || tc.retried) {
 				t.Fatalf("unexpected check count: %d", h.calls)
+			}
+			if !tc.skipped && (len(f.sends) == 0 || r.Retried != tc.retried) {
+				t.Fatalf("run was not dispatched as expected: %+v", r)
 			}
 			if tc.skipped && (len(f.sends) != 0 || len(f.pushed()) != 0 || counted(r)) {
 				t.Fatalf("skip started work or counted as failure: %+v", r)
