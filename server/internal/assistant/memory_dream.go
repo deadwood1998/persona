@@ -11,7 +11,12 @@ import (
 	"github.com/nwverse/persona/server/internal/proto"
 )
 
-const memoryDreamKey = "assistant.memory_dream"
+const (
+	memoryDreamKey           = "assistant.memory_dream"
+	memoryDreamBatchBytes    = 12000
+	memoryDreamMessageBytes  = 3000
+	memoryDreamExcerptSuffix = "\n[Message truncated]"
+)
 
 type memoryDreamProgress struct {
 	Machine   string
@@ -147,14 +152,14 @@ func (s *Service) memoryDream(ctx context.Context) {
 	}
 }
 
-// Only fresh user text can provide evidence. Bound the batch and keep its newest messages.
+// session.items returns messages in sequence order. Take a prefix of the eligible messages so the
+// checkpoint cannot advance past a message deferred by the batch limit.
 func memoryDreamMessages(items []proto.Item, after int) ([]string, int) {
 	var messages []string
 	seq := after
-	left := 12000
-	for i := len(items) - 1; i >= 0 && left > 0; i-- {
-		it := items[i]
-		if it.Seq <= after || it.Role != "user" || it.FullSize > 0 || it.Wake || it.Source != nil || it.Task != nil || it.Compact != nil || it.ToolUseID != "" {
+	left := memoryDreamBatchBytes
+	for _, it := range items {
+		if it.Seq <= seq || it.Role != "user" || it.FullSize > 0 || it.Wake || it.Source != nil || it.Task != nil || it.Compact != nil || it.ToolUseID != "" {
 			continue
 		}
 		// extensionMessage also rejects cross-conversation text and Persona injections,
@@ -163,15 +168,16 @@ func memoryDreamMessages(items []proto.Item, after int) ([]string, int) {
 		if !ok {
 			continue
 		}
-		seq = max(seq, it.Seq)
-		if len(msg.Text) > min(left, 3000) {
-			continue
+		text := msg.Text
+		if len(text) > memoryDreamMessageBytes {
+			text = clipBytes(text, memoryDreamMessageBytes-len(memoryDreamExcerptSuffix)) + memoryDreamExcerptSuffix
 		}
-		messages = append(messages, msg.Text)
-		left -= len(msg.Text)
-	}
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
+		if len(text) > left {
+			break
+		}
+		messages = append(messages, text)
+		seq = it.Seq
+		left -= len(text)
 	}
 	return messages, seq
 }

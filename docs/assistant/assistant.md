@@ -1510,6 +1510,9 @@ Set `"assistant": {"memory_dreaming": true}` in the assistant manager's `manager
 chat on the selected personal computer is idle. It makes at most one attempt per day when it finds new user-authored text
 in the latest eight turns. It sends those messages, the memory index and the previous dreaming note to Persona's configured
 Data processing model. The pass excludes Health, other conversations, tool output and automated messages.
+It reads eligible messages from oldest to newest, up to 12,000 bytes of user text per pass. Long messages are sent as
+marked excerpts of up to 3,000 bytes. A message that does not fit in the remaining batch waits for the next pass
+while it is within the latest eight turns.
 
 The model consolidates durable preferences and explicit corrections into `dreaming.md` in the existing assistant memory,
 visible and editable in the app. It may return no change. The node updates the dedicated note and its index link only if

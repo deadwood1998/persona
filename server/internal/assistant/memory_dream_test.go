@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,39 @@ func TestMemoryDreamUsesOnlyNewUserText(t *testing.T) {
 	messages, seq := memoryDreamMessages(items, 1)
 	if !reflect.DeepEqual(messages, []string{"first", "second", legacyWake}) || seq != 8 {
 		t.Fatalf("messages = %q, seq = %d", messages, seq)
+	}
+}
+
+func TestMemoryDreamDefersMessagesWithoutSkippingTheirSequence(t *testing.T) {
+	first := strings.Repeat("a", 2800)
+	waiting := strings.Repeat("b", 1000)
+	var items []proto.Item
+	for seq := 1; seq <= 4; seq++ {
+		items = append(items, proto.Item{Seq: seq, Role: "user", Kind: proto.KindText, Text: first})
+	}
+	items = append(items,
+		proto.Item{Seq: 5, Role: "user", Kind: proto.KindText, Text: waiting},
+		proto.Item{Seq: 6, Role: "user", Kind: proto.KindText, Text: "later but shorter"},
+	)
+	batch, seq := memoryDreamMessages(items, 0)
+	if len(batch) != 4 || seq != 4 {
+		t.Fatalf("first pass: %d messages, checkpoint %d", len(batch), seq)
+	}
+	batch, seq = memoryDreamMessages(items, seq)
+	if !reflect.DeepEqual(batch, []string{waiting, "later but shorter"}) || seq != 6 {
+		t.Fatalf("second pass: %d messages, checkpoint %d", len(batch), seq)
+	}
+}
+
+func TestMemoryDreamIncludesExcerptOfAnOversizedMessage(t *testing.T) {
+	prefix := strings.Repeat("a", memoryDreamMessageBytes-len(memoryDreamExcerptSuffix)-1)
+	items := []proto.Item{
+		{Seq: 1, Role: "user", Kind: proto.KindText, Text: prefix + "\u754c followed by more words that do not fit in this excerpt"},
+		{Seq: 2, Role: "user", Kind: proto.KindText, Text: "next"},
+	}
+	batch, seq := memoryDreamMessages(items, 0)
+	if !reflect.DeepEqual(batch, []string{prefix + memoryDreamExcerptSuffix, "next"}) || seq != 2 {
+		t.Fatalf("unexpected batch of %d messages at checkpoint %d", len(batch), seq)
 	}
 }
 
