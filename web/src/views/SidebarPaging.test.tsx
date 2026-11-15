@@ -28,9 +28,11 @@ class FakeSocket {
   push(msg: Record<string, unknown>) { this.onmessage?.({ data: JSON.stringify(msg) }); }
 }
 const row = (id: string): Session => ({ machine_id: "computer", session_id: id, title: id, cwd: "/code/demo", status: "working", state: "working", updated_at: "2026-01-01T00:00:00Z", space_id: "project", space_name: "Demo project" });
-const first = row("First page agent"), tail = row("Beyond first page");
+const first = { ...row("First page agent"), cwd: "/home/demo/.persona/health-bin" }, tail = row("Beyond first page");
 const assistant: Session = { ...row("Persona conversation"), assistant: true, state: "needs_you" };
 const health: Session = { ...row("Health conversation"), space: "health", state: "needs_you" };
+const healthDir = { ...health, session_id: "health-dir", title: "Legacy private directory", space: undefined, cwd: "/home/demo/.persona/health/notes" };
+const managerHealthDir = { ...health, session_id: "manager-health-dir", title: "Legacy manager private directory", space: undefined, cwd: "C:\\Users\\demo\\.jarvis\\health-m-0b0b0b\\notes" };
 const emptyPins: AgentPins = { sessions: [], spaces: [] };
 const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } }));
 let host: HTMLDivElement, root: Root;
@@ -49,8 +51,9 @@ async function render(paged: boolean, pins = emptyPins, saved?: string, agentsOn
     if (url.pathname.endsWith("/sessions") && !url.pathname.includes("/agents/")) {
       const q = url.searchParams;
       const scoped = q.get("agents_only") === "1";
-      const total = scoped ? (moved ? 1 : 2) : 4;
-      if (q.has("counts")) return json({ total, state: scoped ? { working: total } : { working: 2, needs_you: 2 }, machine: { computer: total }, group: {}, project: {}, revision: moved ? "r2" : "r1" });
+      const firstPage = scoped ? [first] : [first, assistant, health, healthDir, managerHealthDir];
+      const total = firstPage.length + 1 - (scoped && moved ? 1 : 0);
+      if (q.has("counts")) return json({ total, state: scoped ? { working: total } : { working: 2, needs_you: total - 2 }, machine: { computer: total }, group: {}, project: {}, revision: moved ? "r2" : "r1" });
       if (q.has("since")) return json({
         sessions: moved && !scoped ? [movedRow] : [],
         remove: moved && scoped ? [JSON.stringify([first.machine_id, first.session_id])] : [],
@@ -62,10 +65,10 @@ async function render(paged: boolean, pins = emptyPins, saved?: string, agentsOn
       if (url.searchParams.get("summary") === "0" && !url.searchParams.has("session_id")) {
         return url.searchParams.get("cursor") === "next"
           ? json({ sessions: [tail], remove: [], has_more: false, revision: "r1", total })
-          : json({ sessions: scoped ? [first] : [first, assistant, health], remove: [], has_more: true, next_cursor: "next", revision: "r1", total });
+          : json({ sessions: firstPage, remove: [], has_more: true, next_cursor: "next", revision: "r1", total });
       }
-      if (url.search) return json({ sessions: scoped ? [first] : [first, assistant, health], remove: [], has_more: true, next_cursor: "next", revision: "r1", total });
-      return json({ sessions: [first, tail, assistant, health] });
+      if (url.search) return json({ sessions: firstPage, remove: [], has_more: true, next_cursor: "next", revision: "r1", total });
+      return json({ sessions: [...firstPage, tail] });
     }
     if (url.pathname.endsWith("/pins")) return json(pins);
     if (url.pathname.endsWith("/machines")) return json({ machines: [{ id: "computer", name: "Demo computer", online: true }] });
@@ -194,7 +197,10 @@ it("uses the complete Agents list when the hub supports paging without the Agent
   const { fetch } = await render(true, emptyPins, undefined, false);
   expect(grouping()).not.toBeNull();
   expect(host.textContent).toContain(tail.title);
+  expect(host.textContent).toContain(first.title);
   expect(host.textContent).not.toContain(assistant.title);
   expect(host.textContent).not.toContain(health.title);
+  expect(host.textContent).not.toContain(healthDir.title);
+  expect(host.textContent).not.toContain(managerHealthDir.title);
   expect(fetch.mock.calls.some(([input]) => input.includes("agents_only"))).toBe(false);
 });

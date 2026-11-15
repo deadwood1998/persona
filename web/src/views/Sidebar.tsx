@@ -62,6 +62,7 @@ import { markAllSeenLabel, stateCount } from "../lib/state-labels";
 import { PagedSessionList, type PagedQuickFilters } from "./agents/PagedSessionList";
 import { ListError } from "../ui/ListError";
 import { SESSION_LIST_STYLE } from "../ui/list-metrics";
+import { normalizePath } from "../lib/files";
 import { RUNTIME_AGENTS_PATH, supportsPagedAgents, runtimeActiveAt, runtimeAgents, runtimeIdentity, runtimeNeedsYou, runtimeOrder, runtimeParentIdentity, runtimePlace, runtimeRemoval } from "../lib/runtime-list";
 import { SESSIONS_CATALOG_FEATURE, SESSIONS_QUICK_FILTERS_FEATURE, SESSIONS_TODO_FEATURE, type GroupDimension, type TodoNames } from "../lib/session-groups";
 import { type ListFilters } from "../lib/session-list";
@@ -760,6 +761,15 @@ function BoundedAgentsBlock({ reg, hover, activeKey, go, onNewAgent, onNavigate,
   </div>;
 }
 
+function isSidebarAgent(session: Session): boolean {
+  if (session.assistant || session.space === "health") return false;
+  // Older hubs may report the health directory without a space marker. Match the state directory and manager name
+  // used by identity.InHealthSpace, including paths from Windows nodes.
+  const cwd = session.cwd ?? "";
+  const path = normalizePath(/^(?:[a-z]:|\\\\)/i.test(cwd) ? cwd.replaceAll("\\", "/") : cwd);
+  return !/(?:^|\/)\.(?:persona|jarvis)\/health(?:-m-[0-9a-f]+)?(?:\/|$)/.test(path);
+}
+
 function LegacyAgentsBlock({ reg, hover, activeKey, go, onNewAgent, onNavigate, workspaceActions, add = true, foldable = false, grouping, hubUnreachable, chooseGrouping }: AgentsBlockProps & { grouping: AgentGrouping; /** useHubUnreachable */ hubUnreachable: boolean; chooseGrouping: (g: AgentGrouping) => void }) {
   // the current assistant's computers, agents and to-dos (all of them with one assistant)
   const scope = useScope();
@@ -773,7 +783,7 @@ function LegacyAgentsBlock({ reg, hover, activeKey, go, onNewAgent, onNavigate, 
     return sidebarMachines.filter((m) => own.has(m.id));
   }, [ownIds, sidebarMachines]);
   const { sessions: every, loaded, error: listError } = useFullAgentSessions();
-  const agents = useMemo(() => every.filter((s) => !s.assistant && s.space !== "health"), [every]);
+  const agents = useMemo(() => every.filter(isSidebarAgent), [every]);
   const all = useScoped(agents);
   const mutes = useStore((s) => s.mutes);
   const pins = useStore((s) => s.pins);
