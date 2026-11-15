@@ -1,4 +1,4 @@
-import { storedValue, storeValue } from "../lib/compatibility";
+import { isPersonaStateDir, storedValue, storeValue } from "../lib/compatibility";
 // Beautiful UI's Sidebar Nav: workspace row, quick search, sections, one gliding highlight. Persona's main conversation
 // is the first entry (the app opens on the assistant); a new conversation and a new agent are the "+" of their sections (#1239).
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -767,7 +767,8 @@ function isSidebarAgent(session: Session): boolean {
   // used by identity.InHealthSpace, including paths from Windows nodes.
   const cwd = session.cwd ?? "";
   const path = normalizePath(/^(?:[a-z]:|\\\\)/i.test(cwd) ? cwd.replaceAll("\\", "/") : cwd);
-  return !/(?:^|\/)\.(?:persona|jarvis)\/health(?:-m-[0-9a-f]+)?(?:\/|$)/.test(path);
+  const parts = path.split("/");
+  return !parts.some((part, index) => isPersonaStateDir(part) && /^health(?:-m-[0-9a-f]+)?$/.test(parts[index + 1] ?? ""));
 }
 
 function LegacyAgentsBlock({ reg, hover, activeKey, go, onNewAgent, onNavigate, workspaceActions, add = true, foldable = false, grouping, hubUnreachable, chooseGrouping }: AgentsBlockProps & { grouping: AgentGrouping; /** useHubUnreachable */ hubUnreachable: boolean; chooseGrouping: (g: AgentGrouping) => void }) {
