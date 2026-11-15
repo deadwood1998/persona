@@ -47,6 +47,7 @@ try {
     let release;
     const ready = new Promise((done) => { release = done; });
     let olderGate;
+    let olderStarted;
     let failNextOlder = false;
     await context.route("**/*", async route => {
       const request = route.request(), url = new URL(request.url());
@@ -59,6 +60,7 @@ try {
         const before = Number(url.searchParams.get("before_seq") ?? 0);
         if (before) {
           run.olderReads++;
+          olderStarted?.();
           if (olderGate) await olderGate;
           if (failNextOlder) {
             failNextOlder = false;
@@ -134,17 +136,19 @@ try {
       olderGate = undefined;
       await page.getByText("This input could not be loaded. Try again.", { exact: true }).waitFor();
       await page.locator("[data-nav-loading]").waitFor({ state: "hidden" });
-      // Transcript reads back off for three seconds after a failed page.
-      await page.waitForTimeout(3200);
-
+      // Both selections arrive during backoff, before the server receives another page request.
       const next = page.locator(`${RAIL} [data-tick='1']`);
       const readsBefore = run.olderReads;
       olderGate = new Promise(resolve => { resume = resolve; });
+      const retryRequest = new Promise(resolve => { olderStarted = resolve; });
+      const retryStartedAt = Date.now();
       await first.click();
       await page.locator("[data-nav-loading]").waitFor();
       await next.click();
-      assert.equal(run.olderReads, readsBefore + 1, "Overlapping selections share the in-flight page");
-      const retryStartedAt = Date.now();
+      assert.equal(run.olderReads, readsBefore, "Both selections precede a retry");
+      await retryRequest;
+      olderStarted = undefined;
+      assert.equal(run.olderReads, readsBefore + 1, "Overlapping selections share the retry");
       resume();
       olderGate = undefined;
       await page.waitForFunction(id => {

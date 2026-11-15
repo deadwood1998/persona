@@ -1383,7 +1383,7 @@ export function ChatView({ mid, sid, assistant, starting: launching, onToggleSid
         // Reuse ordinary backward pages, keeping history contiguous rather than inserting an isolated window.
         await loadEarlierForSearch({
           get: () => trNow.current,
-          load: () => loadWithScrollAnchor(trNow.current.loadEarlier),
+          load: () => loadWithScrollAnchor(() => trNow.current.loadEarlier({ waitForRetry: true })),
           frame: nextFrame,
           stopped: () => cancelled() || Date.now() >= deadline || containsInput(trNow.current.items, target),
           onPage: () => {},

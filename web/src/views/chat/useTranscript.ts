@@ -1,5 +1,5 @@
 // A session's items: the newest page over HTTP, then live over the WebSocket (docs/protocol/protocol.md "Continuity of items").
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, errorText, isAbort, sessionPath } from "../../lib/api";
 import { sessionLoadError } from "../../lib/session-link";
 import { getState, listenSession, send, type ItemsEvent } from "../../lib/store";
@@ -20,6 +20,24 @@ const lastPulls = new Map<string, number>();
 const EARLIER_RETRY_MS = 3000;
 const EARLIER_RETRY_MAX_MS = 30_000;
 
+interface EarlierRead {
+  controller: AbortController;
+  promise: Promise<symbol | undefined>;
+  page?: symbol;
+}
+
+function waitForEarlierRetry(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const settle = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", settle);
+      resolve();
+    };
+    const timer = window.setTimeout(settle, ms);
+    signal.addEventListener("abort", settle, { once: true });
+  });
+}
+
 /** Tests only: forget the asks, as a fresh page load does (each sync case starts its clock at the same moment again). */
 export function resetStalePullsForTests() {
   lastPulls.clear();
@@ -37,8 +55,8 @@ export interface Transcript {
   loadingEarlier: boolean;
   /** Identifies the last older page applied to items. */
   earlierPage?: symbol;
-  /** Returns the page's identity if older items were queued; a joined read returns the same identity. */
-  loadEarlier: () => Promise<symbol | undefined>;
+  /** Returns the page's identity if older items were queued. Navigation may wait out a failed read's backoff. */
+  loadEarlier: (options?: { waitForRetry: boolean }) => Promise<symbol | undefined>;
   expandFold: (fold: Item) => Promise<boolean | void>;
   /** The reply as it is written, before the transcript has it: the headless assistant's, or an agent's as Claude shows it
    *  (a Claude session Persona started; docs/integrations/claude-integration.md "Live replies"). "" for none. */
@@ -99,7 +117,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
   // Bumped whenever the shown conversation starts over (another session, or the file was rewritten): an older page or a
   // fold asked for before that is dropped when it lands, so it never merges into the conversation shown by then.
   const generation = useRef(0);
-  const earlierInFlight = useRef<Promise<symbol | undefined> | null>(null);
+  const earlierInFlight = useRef<EarlierRead | null>(null);
   const rewrite = useRef<() => void>(() => {}); // the effect's cache invalidation, shared with older-page reads below
   // The back-off after a failed older page: when loadEarlier may ask again, and how long the last wait was.
   const earlierRetryAt = useRef(0);
@@ -120,13 +138,27 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
     setItems((have) => mergeItems(have, batch));
   }, []);
 
+  const invalidateHistoryReads = useCallback(() => {
+    generation.current++;
+    const earlier = earlierInFlight.current;
+    earlierInFlight.current = null;
+    earlier?.controller.abort();
+    earlierRetryAt.current = 0;
+    earlierWait.current = 0;
+  }, []);
+
+  useLayoutEffect(() => {
+    // A caller arriving after HTTP completes but before these items commit still joins that page.
+    if (earlierPage && earlierInFlight.current?.page === earlierPage) earlierInFlight.current = null;
+  }, [earlierPage]);
+
   useEffect(() => {
     let dead = false;
     const ctl = new AbortController();
     // Older pages and folds still on their way were asked for from what is shown now: they must not land on what replaces it.
     const disownReads = () => {
-      generation.current++;
-      earlierInFlight.current = null;
+      invalidateHistoryReads();
+      setEarlierPage(undefined);
       setLoadingEarlier(false);
     };
     disownReads();
@@ -142,8 +174,6 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
     liveRaw.current = liveShown.current = "";
     covered.current = 0;
     history.current = cached?.history ?? "";
-    earlierRetryAt.current = 0;
-    earlierWait.current = 0;
     setNotLive(false);
     let tally: StaleTally = FRESH_TALLY;
     let lastArrival = Date.now();
@@ -367,6 +397,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
 
     return () => {
       dead = true;
+      invalidateHistoryReads();
       ctl.abort();
       off();
       deltas.current.cancel();
@@ -377,23 +408,29 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
       send({ type: "unsubscribe", machine_id: mid, session_id: sid });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mid, sid, nonce, cacheScope, cacheManager, assistant]);
+  }, [mid, sid, nonce, cacheScope, cacheManager, assistant, invalidateHistoryReads]);
 
   // After the effect above, which starts each conversation's watch from the rev it has then.
   useEffect(() => {
     revWatch.current?.heard(opts.rev, Date.now());
   }, [opts.rev]);
 
-  const loadEarlier = useCallback(() => {
-    if (earlierInFlight.current) return earlierInFlight.current;
-    const first = itemsRef.current[0];
-    if (!first || !hasMore || Date.now() < earlierRetryAt.current) return Promise.resolve(undefined);
-    const gen = generation.current;
+  const loadEarlier = useCallback<Transcript["loadEarlier"]>((options) => {
+    if (earlierInFlight.current) return earlierInFlight.current.promise;
+    const delay = earlierRetryAt.current - Date.now();
+    if (!itemsRef.current.length || !hasMore || (delay > 0 && !options?.waitForRetry)) return Promise.resolve(undefined);
+    const read: EarlierRead = { controller: new AbortController(), promise: Promise.resolve(undefined) };
+    earlierInFlight.current = read;
     setLoadingEarlier(true);
-    const read = (async () => {
+    read.promise = (async () => {
+      const { signal } = read.controller;
       try {
-        const p = await api<ItemsPage>(`${sessionPath(mid, sid)}/items?${PAGE}&before_seq=${first.seq}`);
-        if (gen !== generation.current) return;
+        if (delay > 0) await waitForEarlierRetry(delay, signal);
+        if (signal.aborted) return;
+        const first = itemsRef.current[0];
+        if (!first) return;
+        const p = await api<ItemsPage>(`${sessionPath(mid, sid)}/items?${PAGE}&before_seq=${first.seq}`, { signal });
+        if (signal.aborted) return;
         if (p.history && history.current && p.history !== history.current) {
           rewrite.current();
           return;
@@ -404,26 +441,24 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
         earlierRetryAt.current = 0;
         earlierWait.current = 0;
         if (p.items?.some((item) => item.seq < first.seq)) {
-          const page = Symbol();
-          setEarlierPage(page);
-          return page;
+          read.page = Symbol();
+          setEarlierPage(read.page);
+          return read.page;
         }
       } catch (e) {
-        if (gen !== generation.current) return;
+        if (signal.aborted) return;
         // Kept in state for the caller to show; the next try waits instead of firing on every scroll tick.
         earlierWait.current = Math.min(earlierWait.current ? earlierWait.current * 2 : EARLIER_RETRY_MS, EARLIER_RETRY_MAX_MS);
         earlierRetryAt.current = Date.now() + earlierWait.current;
         setError(sessionLoadError(errorText(e)));
       } finally {
-        // a start-over already cleared both for the conversation shown now
-        if (gen === generation.current) {
-          earlierInFlight.current = null;
+        if (earlierInFlight.current === read) {
+          if (!read.page) earlierInFlight.current = null;
           setLoadingEarlier(false);
         }
       }
     })();
-    earlierInFlight.current = read;
-    return read;
+    return read.promise;
   }, [mid, sid, hasMore, apply]);
 
   const expandFold = useCallback(
