@@ -851,13 +851,6 @@ func (s *Service) scheduleOwn(ctx context.Context, sessionID, title, rawPrompt, 
 	if inbox != nil { // left out: it keeps its setting
 		t.Inbox = *inbox
 	}
-	if freshEachRun != nil {
-		t.FreshEachRun = *freshEachRun
-		if *freshEachRun {
-			t.SessionID = ""
-		}
-	}
-	isolateScheduledConversation(t, mayBeMain)
 	var out string
 	switch {
 	case t.Repeat != repeatOnce && !t.Enabled:
@@ -887,6 +880,10 @@ func (s *Service) scheduleOwn(ctx context.Context, sessionID, title, rawPrompt, 
 			out = fmt.Sprintf("Rescheduled %s「%s」 for %s (%s).", t.ID, t.label(), at.In(loc).Format("01-02 15:04 Mon"), until(at))
 		}
 	}
+	if freshEachRun != nil && t.Repeat != repeatOnce {
+		t.FreshEachRun = *freshEachRun
+	}
+	isolateScheduledConversation(t, mayBeMain)
 	// until applies only once the task is repeating. A one-off ignores it, including a bad value; checkUntil
 	// clears it. Absent keeps the stored end time; null clears it. A past end time on an enabled task fails
 	// before anything is saved.
@@ -1694,6 +1691,11 @@ func (s *Service) runTask(t Task, due, now time.Time, manual, retried bool) (pro
 			return proto.Session{}, s.skipRun(run, err)
 		}
 	}
+	draftHandedOff := false
+	startRun := func(m *Device) {
+		draftHandedOff = true
+		s.startScheduledRun(run, t, m)
+	}
 	if t.Repeat != repeatOnce {
 		// Refresh the note under the schedule lock after acquiring the send slot.
 		if sc, err := s.lockedSchedule(ctx); err == nil {
@@ -1704,7 +1706,7 @@ func (s *Service) runTask(t Task, due, now time.Time, manual, retried bool) (pro
 		}
 		t.stateRunKey = s.openTaskStateDraft()
 		defer func() {
-			if run.SessionID == "" {
+			if !draftHandedOff {
 				s.takeTaskStateDraft(t.stateRunKey)
 			}
 		}()
@@ -1727,7 +1729,7 @@ func (s *Service) runTask(t Task, due, now time.Time, manual, retried bool) (pro
 			if err == nil {
 				run.MachineID, run.SessionID = t.MachineID, t.SessionID
 				s.logf("task %s ran %s after its time", t.ID, lateness(due, time.Now()))
-				s.startScheduledRun(run, t, &m)
+				startRun(&m)
 				return proto.Session{MachineID: t.MachineID, SessionID: t.SessionID}, nil
 			}
 			s.logf("task %s into %s: %v; starting a new conversation", t.ID, t.SessionID, err)
@@ -1770,7 +1772,7 @@ func (s *Service) runTask(t Task, due, now time.Time, manual, retried bool) (pro
 			if err == nil {
 				run.MachineID, run.SessionID = t.RunMachineID, t.RunSessionID
 				s.logf("task %s ran %s after its time (its conversation %s)", t.ID, lateness(due, time.Now()), short(t.RunSessionID))
-				s.startScheduledRun(run, t, &m)
+				startRun(&m)
 				return proto.Session{MachineID: t.RunMachineID, SessionID: t.RunSessionID}, nil
 			}
 			s.logf("task %s into its conversation %s: %v; starting a new one", t.ID, short(t.RunSessionID), err)
@@ -1793,7 +1795,7 @@ func (s *Service) runTask(t Task, due, now time.Time, manual, retried bool) (pro
 	if d, ok := s.device(ctx, sess.MachineID); ok {
 		m = &d
 	}
-	s.startScheduledRun(run, t, m)
+	startRun(m)
 	return sess, nil
 }
 

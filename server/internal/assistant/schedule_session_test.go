@@ -121,6 +121,49 @@ func TestAFreshRecurringTaskStartsNewChatsWithARetainedOrigin(t *testing.T) {
 	}
 }
 
+func TestFreshEachRunOnRescheduleUsesFinalRepeat(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		at    string
+		every string
+		want  string
+	}{
+		{name: "one-off", at: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), want: repeatOnce},
+		{name: "promoted to interval", every: "30m", want: repeatInterval},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			node := readyHub()
+			node.settings = &Settings{Main: "main", Timezone: "UTC"}
+			s := newStorelessService(t, node)
+			const origin = "origin-chat"
+			const prompt = "Check the renewal"
+			setTasks(s, Task{ID: "followup", Title: "Renewal", Prompt: prompt, Repeat: repeatOnce,
+				At: time.Now().Add(-time.Minute), MachineID: "server", SessionID: origin})
+			s.recordRun(ScheduleRun{RefID: "followup", Status: runOK, MachineID: "server", SessionID: origin})
+
+			args, err := json.Marshal(map[string]any{
+				"title": "Renewal", "prompt": prompt, "at": tc.at, "every": tc.every, "fresh_each_run": true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.toolScheduleFollowup(t.Context(), "server", origin, args); err != nil {
+				t.Fatal(err)
+			}
+			task, _ := taskByID(s, "followup")
+			if task.Repeat != tc.want || task.SessionID != origin || task.FreshEachRun != (tc.want != repeatOnce) {
+				t.Fatalf("rescheduled task: %+v", task)
+			}
+			if tc.want == repeatOnce {
+				sess, err := runNow(t, s, "followup")
+				if err != nil || sess.SessionID != origin {
+					t.Fatalf("one-off did not go back to its originating chat: %+v, %v", sess, err)
+				}
+			}
+		})
+	}
+}
+
 // A conversation that is gone (Claude Code cleans transcripts up after 30 days), one on another launcher, or one the
 // user reset ("New chat next time") can't be continued: the run starts a new one and that becomes the task's.
 func TestATaskStartsANewConversationWhenItsOwnCannotGoOn(t *testing.T) {

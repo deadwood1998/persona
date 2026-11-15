@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -136,6 +137,31 @@ func TestTaskStateDiscardsDraftWhenRunCannotBeRegistered(t *testing.T) {
 	if len(runs) != 0 || len(tasks) != 1 || tasks[0].StateNote == nil ||
 		tasks[0].StateNote.Text != "previous cursor" || tasks[0].StateNote.Revision != 1 {
 		t.Fatalf("reloaded tasks and runs after storage recovered: %+v, %+v", tasks, runs)
+	}
+}
+
+func TestTaskStateDiscardsDraftWhenPreviousRunIsBusy(t *testing.T) {
+	node := readyHub()
+	node.setSessions("server", proto.Session{SessionID: "busy", Status: proto.StatusWorking, State: proto.StateWorking})
+	s := newStorelessService(t, node)
+	task := Task{ID: "patrol", Repeat: repeatInterval, EveryMinutes: 30, Enabled: true, FreshEachRun: true,
+		RunMachineID: "server", RunSessionID: "busy", RunLauncher: "claude"}
+	sc := setTasks(s, task)
+	now := time.Now()
+	for _, manual := range []bool{false, true} {
+		if _, err := s.runTask(task, now, now, manual, false); !errors.Is(err, errTaskBusy) {
+			t.Fatalf("manual=%v: run did not skip the busy chat: %v", manual, err)
+		}
+		sc.mu.Lock()
+		drafts := len(sc.stateDrafts)
+		sc.mu.Unlock()
+		if drafts != 0 {
+			t.Fatalf("manual=%v: skipped run left %d state draft(s)", manual, drafts)
+		}
+	}
+	_, runs := scheduleState(s)
+	if len(runs) != 2 || runs[0].SessionID != "busy" || runs[1].SessionID != "busy" {
+		t.Fatalf("skipped runs should still link to the busy chat: %+v", runs)
 	}
 }
 
