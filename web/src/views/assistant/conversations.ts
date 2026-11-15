@@ -76,13 +76,13 @@ export function groupByDay<T extends Session>(list: T[], now: Date): { title: st
 /** One list from what was fetched with the archived ones (`fetched`), the store's list (newer conversations, without
  *  the archived ones) and the live sessions pushed since (state, title, last message, and the archive mark: the hub
  *  marks every assistant session it pushes, `archived` only when it is, so one without it was brought back since).
- *  Live-only conversations must belong to the selected manager, even when other managers share that computer. */
+ *  Live sessions must belong to the selected manager and the main assistant space. */
 export function mergeConversations(fetched: Conversation[], listed: Session[], live: Session[], manager?: string): Conversation[] {
   const by = new Map<string, Conversation>();
   for (const s of fetched) by.set(s.session_id, s);
   for (const s of listed) by.set(s.session_id, { ...by.get(s.session_id), ...s });
   for (const s of live) {
-    if (!s.assistant || !sameManager(s.manager, manager)) continue;
+    if (!s.assistant || s.space || !sameManager(s.manager, manager)) continue;
     by.set(s.session_id, { ...by.get(s.session_id), ...s, archived: s.archived === true });
   }
   return [...by.values()];

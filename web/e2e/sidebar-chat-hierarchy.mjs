@@ -45,8 +45,14 @@ try {
           const archived = { ...original, session_id: "archived-garden", title: archiveTitle, archived: true };
           body.conversations.push(scheduled);
           if (new URL(route.request().url()).searchParams.has("archived")) body.conversations.push(archived);
-          data = { main: body.main, recent: original.session_id, lead: body.leaders[0],
+          // The live session stream still has this chat while both assistant summaries are behind.
+          const liveOnly = body.conversations.find((chat) => chat !== original && chat.session_id !== body.main
+            && !body.leaders.includes(chat.session_id) && chat.session_id !== body.background_supervisor
+            && chat !== scheduled && !chat.archived);
+          assert(liveOnly);
+          data = { main: body.main, recent: original.session_id, lead: body.leaders[0], liveOnly: liveOnly.session_id,
             background: body.background_supervisor, total: body.conversations.filter((chat) => !chat.archived).length };
+          body.conversations = body.conversations.filter((chat) => chat !== liveOnly);
           await route.fulfill({ response, json: body });
         });
 
@@ -69,7 +75,7 @@ try {
         const pinned = sidebar.getByRole("heading", { name: "Pinned", exact: true });
         const agents = sidebar.locator("[data-sidebar-agents]").getByText("Agents", { exact: true }).first();
         assert.equal(await history.getAttribute("href"), "/history");
-        assert.equal(await history.locator("[title]").getAttribute("title"), `${data.total} unarchived Persona chats`);
+        await history.locator(`[title="${data.total} unarchived Persona chats"]`).waitFor();
         assert.equal(await chat(data.main).count(), 0);
         assert.equal(await chat(data.background).count(), 0);
         assert.equal(await chat("scheduled-garden").count(), 0);
@@ -134,6 +140,7 @@ try {
         assert.equal(await page.getByRole("main").locator(`a[href*="/persona/${data.main}"]`).count(), 1);
         assert.equal(await page.getByRole("main").locator(`a[href*="/persona/${data.lead}"]`).count(), 1);
         assert.equal(await page.getByRole("main").locator(`a[href*="/persona/${data.recent}"]`).count(), 1);
+        assert.equal(await page.getByRole("main").locator(`a[href*="/persona/${data.liveOnly}"]`).count(), 1);
 
         await archived.click();
         await page.getByText(archiveTitle, { exact: true }).waitFor();

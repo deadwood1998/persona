@@ -81,6 +81,7 @@ describe("arrange", () => {
       conv("new", { manager: "work" }),
       conv("new-archived", { manager: "work", archived: true }),
       conv("other-manager"),
+      conv("health-chat", { manager: "work", space: "health" }),
       conv("agent", { manager: "work", assistant: false }),
     ];
     const history = mergeConversations([conv("fetched-archive", { archived: true })], listed, live, "work");
