@@ -81,10 +81,19 @@ export function MermaidViewer({ svg, onClose }: { svg: string; onClose: () => vo
       const x = area.clientWidth;
       const y = area.clientHeight;
       if (!x || !y || (x === viewport.x && y === viewport.y)) return;
+      const firstLayout = viewport.x === 0;
       viewport = { x, y };
       const inset = 16;
       fitZoom = Math.min(Math.max(1, viewport.x - 2 * inset) / width, Math.max(1, viewport.y - 2 * inset) / height);
-      fit();
+      if (firstLayout) {
+        fit();
+        return;
+      }
+      // Keep the established view and enough of the drawing in reach after a large size change.
+      const reach = (size: number, available: number) => (size + available) / 2 - Math.min(32, size, available);
+      const maxX = reach(width * view.zoom, x);
+      const maxY = reach(height * view.zoom, y);
+      setView({ x: clamp(view.x, -maxX, maxX), y: clamp(view.y, -maxY, maxY), zoom: view.zoom });
     }
 
     function zoomFrom(from: Point, to: Point, factor: number) {

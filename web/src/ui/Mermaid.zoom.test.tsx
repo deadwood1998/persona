@@ -32,6 +32,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const zoomButton = () => host.querySelector<HTMLButtonElement>(`button[aria-label="${t("ui-mermaid.zoom")}"]`)!;
@@ -79,6 +80,34 @@ describe("Mermaid zoom", () => {
     expect(zoom).toBeGreaterThan(beforeZoom);
     expect((300 - x) / zoom).toBeCloseTo((300 - beforeX) / beforeZoom);
     expect((50 - y) / zoom).toBeCloseTo((50 - beforeY) / beforeZoom);
+  });
+
+  it("preserves pan and zoom through observer notifications and fits on request", () => {
+    let callback: ResizeObserverCallback | undefined;
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(cb: ResizeObserverCallback) { callback = cb; }
+      observe() {}
+      disconnect() {}
+    });
+    const { stage, drawing } = openStage();
+    const notify = () => callback?.([], {} as ResizeObserver);
+    const initial = drawing.style.transform;
+    stage.dispatchEvent(new WheelEvent("wheel", {
+      clientX: 700, clientY: 350, deltaY: -100, bubbles: true, cancelable: true,
+    }));
+    dialog()!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+    const adjusted = drawing.style.transform;
+    expect(adjusted).not.toBe(initial);
+    notify();
+    expect(drawing.style.transform).toBe(adjusted);
+    Object.defineProperties(stage, {
+      clientWidth: { value: 580 },
+      clientHeight: { value: 800 },
+    });
+    notify();
+    expect(drawing.style.transform).toBe(adjusted);
+    dialog()!.querySelector<HTMLButtonElement>(`button[aria-label="${t("ui-mermaid.fit")}"]`)!.click();
+    expect(drawing.style.transform).toBe("translate(-50%, -50%) translate(0px, 0px) scale(1.37)");
   });
 
   it("opens as a modal dialog that has the focus", () => {
