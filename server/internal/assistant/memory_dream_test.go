@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/nwverse/persona/server/internal/proto"
 )
@@ -90,5 +91,55 @@ func TestMemoryDreamProcessesIdleMainOnce(t *testing.T) {
 	calls := f.judged
 	if calls != 1 || len(h.writes) != 1 || h.writes[0].Content != "Prefers tea." || h.writes[0].Cwd == "" {
 		t.Fatalf("model calls = %d, writes = %+v", calls, h.writes)
+	}
+}
+
+func TestMemoryDreamTracksTranscriptHistory(t *testing.T) {
+	ctx := t.Context()
+	f := newFakeHub().withMachine()
+	f.devices = []Device{{ID: "server", Online: true, Home: "/home/example"}}
+	f.sessions["server"] = []proto.Session{{SessionID: "main", Assistant: true, Status: proto.StatusDone}}
+	f.hello.Assistant.MemoryDreaming = true
+	f.judge = `{"body":""}`
+	st := &memStore{}
+	h := &dreamTestHub{fakeHub: f}
+	s := withSettings(t, f, New(Options{Hub: h, Store: func() Store { return st }, Logf: testLogf(t)}))
+	setSettings(t, s, func(v *Settings) {
+		v.Main, v.MainMachineID, v.MachineID = "main", "server", "server"
+	})
+
+	for _, tc := range []struct {
+		name, answer, wantHistory string
+		seq, wantSeq              int
+	}{
+		{"changed transcript", "replacement", "replacement", 2, 2},
+		{"older node omits history", "", "original", 101, 101},
+		{"same transcript", "original", "original", 2, 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := st.PutSetting(ctx, memoryDreamKey, memoryDreamProgress{
+				Machine: "server", Session: "main", Seq: 100, History: "original", CheckedAt: time.Now().Add(-48 * time.Hour),
+			}); err != nil {
+				t.Fatal(err)
+			}
+			f.answerNode(DeviceSessionItems, func(_ string, _ json.RawMessage) (any, error) {
+				return map[string]any{
+					"history": tc.answer,
+					"items":   []proto.Item{{Seq: tc.seq, Role: "user", Kind: proto.KindText, Text: "I prefer tea."}},
+				}, nil
+			})
+			before := f.judged
+			s.memoryDream(ctx)
+			var progress memoryDreamProgress
+			if _, err := st.Setting(ctx, memoryDreamKey, &progress); err != nil {
+				t.Fatal(err)
+			}
+			if progress.Seq != tc.wantSeq || progress.History != tc.wantHistory {
+				t.Fatalf("checkpoint = %+v", progress)
+			}
+			if called := f.judged > before; called != (tc.name != "same transcript") {
+				t.Fatalf("model called = %v", called)
+			}
+		})
 	}
 }

@@ -17,6 +17,7 @@ type memoryDreamProgress struct {
 	Machine   string
 	Session   string
 	Seq       int
+	History   string
 	CheckedAt time.Time
 }
 
@@ -73,13 +74,20 @@ func (s *Service) memoryDream(ctx context.Context) {
 		return
 	}
 	if progress.Machine != machine || progress.Session != cfg.Main {
-		progress.Seq = 0
+		progress.Seq, progress.History = 0, ""
 	}
 	var page struct {
-		Items []proto.Item
+		Items   []proto.Item `json:"items"`
+		History string       `json:"history"`
 	}
 	if err := s.call(ctx, machine, DeviceSessionItems, map[string]any{"session_id": cfg.Main, "turns": 8, "lazy_images": true}, &page); err != nil {
 		return
+	}
+	if page.History != "" {
+		if progress.History != "" && progress.History != page.History {
+			progress.Seq = 0
+		}
+		progress.History = page.History
 	}
 	messages, seq := memoryDreamMessages(page.Items, progress.Seq)
 	if len(messages) == 0 {
@@ -101,7 +109,7 @@ func (s *Service) memoryDream(ctx context.Context) {
 	}{snapshot.Note, snapshot.Index, messages})
 
 	// Throttle failed attempts as well. Checkpoint the input only after processing it.
-	progress = memoryDreamProgress{Machine: machine, Session: cfg.Main, Seq: progress.Seq, CheckedAt: time.Now()}
+	progress.Machine, progress.Session, progress.CheckedAt = machine, cfg.Main, time.Now()
 	if err := st.PutSetting(ctx, memoryDreamKey, progress); err != nil {
 		s.logf("memory dreaming: save progress: %v", err)
 		return
