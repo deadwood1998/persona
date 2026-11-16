@@ -244,8 +244,12 @@ func (rh *RuntimeHost) request(ctx context.Context, h *runtimeConn, method strin
 		// sessions over (runtimecontrol.go). workspaces: runtime.workspaces is kept and, for a runtime with
 		// caps.workspaces that is the machine's engine, listed as its catalog and asked to make worktrees
 		// (runtimeworkspaces.go).
+		features := []string{"prefer_running", "resume_argv", "handover", "transcript", "launchers", "start_params", "modes", "resume", "codex_thread", "unlisted_transcripts", "workspaces"}
+		if !h.isDaemon() {
+			features = append(features, "leader_tools")
+		}
 		res := map[string]any{"protocol": RuntimeProtocol, "node_version": rh.version, "hub": rh.current() != nil,
-			"features": []string{"prefer_running", "resume_argv", "handover", "transcript", "launchers", "start_params", "modes", "resume", "codex_thread", "unlisted_transcripts", "workspaces", "leader_tools"}}
+			"features": features}
 		if offer := rh.packageOffer(h, hello); offer != nil {
 			res["update"] = offer
 		}
