@@ -1171,6 +1171,11 @@ Drawn as Telegram draws them (#2984), with one look on iPhone / iPad, the web an
 | Inline code | the body's color on its gray (iOS `Theme.inlineCodeBackground`, Android `sunken`), monospaced | a click or tap copies it ("Copied"); on the web so do Enter or Space when it is focused; a click ending a drag that selected words doesn't, and on Android neither does a tap in a message whose words are selected in place (4.2). Blue is kept for what opens: code that is a path there (inside a link) opens the file, not a copy. On iOS a long press still lifts the message | iOS `CodeCopyMarkdown` (PersonaKit), `RunFonts`; web `copyInlineCode`, `rehypeLinkedCode`; Android `copyingCode` (a `LinkAnnotation.Clickable` styled as code) |
 | Quote | the accent bar on a faint accent card (iOS `Theme.quoteBackground`, web `--accent` at 8%, Android `accentSoft`), a quote mark at the top end (iOS `Theme.Icon.quoteMark`) | longer than about four lines (iOS `Theme.Size.quoteFold`, scaled with the text) it folds with its end faded; a click or tap opens it, its chevron (at the touch size) folds it again. A reply still being written never folds its quotes | iOS `ReplyQuote`, `replyStreaming`; web `ReplyQuote`, `ReplyStreaming`; Android `ReplyQuote`, `LocalReplyStreaming` |
 
+On web, **Comment** on a selection within one transcript message opens the shared comment card below the highlighted
+passage. The numbered mark reopens the editor at that passage. The composer keeps a list of drafts for review and
+sending, including drafts whose source text is outside the loaded transcript. A failed delivery keeps the serialized
+passages and notes together in the retryable message.
+
 The iOS in-place selection view (`LiftSelection.swift`) draws the quote card under the selection highlight. A code block's title bar is not drawn there yet.
 
 ### 3.12 Chat edges under floating chrome
