@@ -1097,6 +1097,59 @@ test('leader tools activate only for the calling leader and invoke the hub as it
   assert.equal(await registeredPlan.opts.when(context('session-leader')), false)
 })
 
+test('an Agent leader and an assistant keep their own schemas for the same tool name', async (t) => {
+  const registry = () => {
+    const tools = new Map()
+    return {
+      tools,
+      register(def, opts) {
+        tools.set(def.name, { def, opts })
+        return () => tools.delete(def.name)
+      },
+    }
+  }
+  const globalTools = registry()
+  const agentTools = registry()
+  const assistantTools = registry()
+  const assistantCwd = '/home/u/.persona/assistant'
+  const assistant = { session: { id: 'session-assistant', header: { cwd: assistantCwd } }, ctx: { tools: assistantTools } }
+  const leader = { session: { id: 'session-leader' }, ctx: { tools: agentTools } }
+  const { n, ctl, ev, rt } = await setup(t, {
+    assistant: true, registerTool: globalTools.register, features: ['leader_tools'],
+    agents: { list: () => [assistant] },
+  })
+  ctl.add(assistant.session.id, { cwd: assistantCwd })
+  ctl.add(leader.session.id)
+  rt.start()
+  await n.ready
+  const original = n.peer.onRequest
+  n.peer.onRequest = (method, params) => {
+    if (method !== 'mcp.tools') return original(method, params)
+    if (params.assistant) return { tools: [{ name: 'task_plan', description: 'Assistant plan' }] }
+    if (params.leader_only) return { tools: [{ name: 'task_plan', description: 'Restricted leader plan' }] }
+    return { tools: [] }
+  }
+  await rt.refreshTools()
+  const name = 'mcp__persona__task_plan'
+  const globalPlan = await until('assistant plan', () => globalTools.tools.get(name))
+  ev.emit('agent/created', { agent: leader })
+  const scopedPlan = agentTools.tools.get(name)
+  assert.equal(assistantTools.tools.size, 0)
+  assert.equal(globalPlan.def.description, 'Assistant plan')
+  assert.equal(scopedPlan.def.description, 'Restricted leader plan')
+  assert.equal(globalPlan.opts.when({ agent: assistant }), true)
+  assert.equal(globalPlan.opts.when({ agent: leader }), false)
+  assert.equal(await scopedPlan.opts.when({ agent: leader }), true)
+  await globalPlan.def.execute({}, { agent: assistant })
+  await scopedPlan.def.execute({}, { agent: leader })
+  assert.deepEqual(n.toolCalls, [
+    { name: 'task_plan', args: {}, session_id: assistant.session.id, assistant: true },
+    { name: 'task_plan', args: {}, session_id: leader.session.id },
+  ])
+  rt.stop()
+  assert.equal(agentTools.tools.size, 0)
+})
+
 test('advertises DSH configured models as launchers in hello and launchers.models (#5572)', async (t) => {
   const dshModels = [
     {
