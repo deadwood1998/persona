@@ -51,6 +51,16 @@ func (h *Hub) authorizeScopedDevice(w http.ResponseWriter, r *http.Request, p pr
 	return false
 }
 
+// Scoped sockets can follow conversations and check connectivity.
+func scopedSocketCommand(command string) bool {
+	switch command {
+	case "subscribe", "unsubscribe", "ping":
+		return true
+	default:
+		return false
+	}
+}
+
 // scopedSocketEvent fails closed for every push outside the chat stream.
 func scopedSocketEvent(data []byte) bool {
 	var event struct {

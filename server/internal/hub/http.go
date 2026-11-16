@@ -1440,12 +1440,8 @@ func (h *Hub) onClientMessage(ctx context.Context, c *client, data []byte) {
 	if json.Unmarshal(data, &msg) != nil {
 		return
 	}
-	if c.role == roleScoped {
-		switch msg.Type {
-		case "subscribe", "unsubscribe", "ping":
-		default:
-			return
-		}
+	if c.role == roleScoped && !scopedSocketCommand(msg.Type) {
+		return
 	}
 	h.mu.Lock()
 	c.activeAt = time.Now()
