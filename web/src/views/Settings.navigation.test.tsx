@@ -2,7 +2,7 @@
 // Settings category navigation keeps the existing URLs and phone history while moving beside the content.
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const viewport = vi.hoisted(() => ({ phone: false }));
 vi.hoisted(() => {
@@ -48,11 +48,15 @@ vi.mock("./settings/SentSettings", () => ({ SentSettings: () => <div data-page="
 
 import { initI18n, t } from "../i18n";
 import { Settings } from "./Settings";
+import { loadPages } from "../lib/lazy-page";
 import { FROM_LIST, openedFromSub } from "./settings/nav";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let host: HTMLDivElement;
 let root: Root;
+// Extensions and Connectors are chunks of their own (Settings.tsx, lazyPage): in before the pages render
+beforeAll(() => loadPages());
+
 beforeEach(() => {
   viewport.phone = false;
   localStorage.clear();
@@ -121,7 +125,6 @@ describe("Settings category navigation", () => {
       ["text-size", t("ui-look.text_size_hint")],
       ["reply-motion", t("settings.reply_motion_hint")],
       ["agent-details", t("context.details_hint")],
-      ["context-as-used", t("context.as_used_hint")],
       ["install-app", t("settings.install_installed")],
     ];
     for (const [anchor, text] of hints) {

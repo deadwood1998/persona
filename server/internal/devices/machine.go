@@ -289,6 +289,7 @@ func (m *Machine) snapshot() proto.Machine {
 		EngineSuggested: suggested, EngineSetsUnsupported: setsUnsupported, Link: link, System: d.metrics.system(m.cfg.ID),
 		Clipboard:    m.clipboardStateLocked(clipboardOn),
 		FileTransfer: m.fileTransferState(fileTransferOn),
+		ClaudePlugin: m.info.ClaudePlugin,
 	}
 }
 
@@ -626,7 +627,7 @@ func (m *Machine) callOnce(ctx context.Context, method string, params any, out a
 		return &rpc.Error{Code: proto.CodeNodeOutdated, Message: i18n.T(i18n.From(ctx), "hub-machine.node_no_secret_run")}
 	}
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return rpc.NotSent(ctx.Err()) // waited for the connection or the resident handover: nothing went out
 	}
 	if p == nil {
 		return fmt.Errorf("%s: %w", m.name(), errOffline)
@@ -873,6 +874,15 @@ func (m *Machine) onEvent(event string, params json.RawMessage) {
 		return // the manager's alone
 	case "claude.dirs":
 		m.rememberClaudeDirs(params)
+	case "claude.plugin": // the Persona plugin for Claude Code there changed (node/claudeplugin.go)
+		var st proto.ClaudePlugin
+		if json.Unmarshal(params, &st) == nil && st.State != "" {
+			m.mu.Lock()
+			m.info.ClaudePlugin = &st
+			m.mu.Unlock()
+			m.d.changed()
+		}
+		return
 	case "metrics": // the monitoring is the manager's (metrics.go)
 		if !m.stopped() { // a late one from a machine let go would bring it back (forgetMachine)
 			m.d.onMetrics(m.cfg.ID, params)

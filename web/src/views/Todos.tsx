@@ -75,7 +75,7 @@ import { formatDate, t } from "../i18n";
 import { groupTodosByProject, treeStateLabel, type TodoProjectGroup, type TreeState } from "../lib/todo-tree";
 import { directionTitle, groupsByDirection, useDirectionTree, type Direction } from "../lib/direction-tree";
 import { DirectionCountsText } from "./DirectionMarks";
-import { FOLDED_SECTIONS, TRIAGE_SECTIONS, checksAsOpen, countsAsOpen, lastActivity, prBlockers, supersededFailedStarts, triage, triageTodos, type TriageGroup, type TriageResult, type TriageSection } from "../lib/todo-triage";
+import { FOLDED_SECTIONS, TRIAGE_SECTIONS, checksAsOpen, countsAsOpen, lastActivity, openMergePRs, prBlockers, supersededFailedStarts, triage, triageTodos, type TriageGroup, type TriageResult, type TriageSection } from "../lib/todo-triage";
 import {
   TODO_LIST_FILTERS,
   TODO_LIST_SORTS,
@@ -1270,7 +1270,6 @@ const SECTION_TONE: Record<TriageSection, string> = {
   working: "text-orange",
   parked: "text-ink-2",
   just_done: "text-green",
-  pr: "text-accent-ink",
   other: "text-ink-2",
   shelved: "text-ink-3",
   done: "text-ink-3",
@@ -1518,7 +1517,9 @@ const TodoListItem = memo(function TodoListItem({
   onMenu?: TodoRowMenuOpener;
 }) {
   const { status, dotState, activeCount } = view;
-  const pr = section === "pr" ? prLink(todo.pr_url) : null;
+  // the PR it waits on: its current one, or an earlier one still open (#7935)
+  const openPR = (section ?? view.section) === "parked" ? openMergePRs(todo, Date.now())[0] : undefined;
+  const pr = openPR ? prLink(openPR.url) : null;
   const toneClass = TONE_CLASS[TODO_STATUS_INFO[shownStatus(todo, status)].tone];
   const held = heldDelivery(todo);
   const thread = useStore((s) => todoThreadsOn(s.features)) ? boundThread(todo) : undefined;
@@ -1662,7 +1663,7 @@ const TodoListItem = memo(function TodoListItem({
               <Icon name="pullRequest" size={11} />
               {pr.text}
             </a>
-            <span className="truncate">· {prBlockers(todo).map((key) => t(`assistant-tasks.pr_blocker_${key}`)).join(" · ")}</span>
+            <span className="truncate">· {prBlockers(todo, openPR).map((key) => t(`assistant-tasks.pr_blocker_${key}`)).join(" · ")}</span>
           </div>
         )}
 

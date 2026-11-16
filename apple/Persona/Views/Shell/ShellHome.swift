@@ -95,7 +95,9 @@ struct ShellHome: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { room.composerAtRest($0, typeSize: typeSize) }
                     .onPreferenceChange(MentionMenuOpen.self) { open in withAnimation(Theme.Motion.standard) { mentionOpen = open } }
             }
-            .padding(.horizontal, Theme.Space.m)
+            // Beside the open Duo's floating tabs' switch, room at the trailing end (#4231); the fade and the page's color go
+            // across. One step of the chain for both, not two: it is the page's deepest stack on a phone (#6735).
+            .tabSwitchRoom(padding: Theme.Space.m)
             .padding(.bottom, Theme.Space.s)
             .frame(maxWidth: ChatView.readableWidth)
             .frame(maxWidth: .infinity)
@@ -110,6 +112,7 @@ struct ShellHome: View {
             }
             .background(Theme.pageBackground.ignoresSafeArea(edges: .bottom))
         }
+        .keepsHeightUnderUndockedKeyboard() // the composer stays at the bottom under a floating keyboard (#2565)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { room.pageAtRest($0) }
         .navigationTitle(model.assistantShownName)
         .task(id: launcher) { if pending == nil { await model.warmAssistant(launcher: launcher) } }
@@ -456,6 +459,7 @@ struct ShellDestinations: ViewModifier {
                 .navigationDestination(for: InboxChatRoute.self) { r in routed(ChatView(key: r.key, itemManager: r.manager).id(r.key)) }
                 .environment(\.feishuOpen) { path.append($0) }
                 .environment(\.pushInboxChat, routeChat)
+                .environment(\.shellInboxAccounts, accounts)
                 #if DEBUG
                 .onAppear { ShellTrace.shared.note("inbox chat closure available=\(routeChat != nil)") }
                 #endif
@@ -508,9 +512,12 @@ struct ShellDestinations: ViewModifier {
         }
     }
 
-    @ViewBuilder private func place(_ route: ShellRoute) -> some View {
+    private func place(_ route: ShellRoute) -> some View { Self.place(route, path: $path, accounts: accounts) }
+
+    /// A place's page: pushed here, or drawn as the Sidebar layout's root (#8359, `AssistantView.sidebarRootPage`).
+    @ViewBuilder static func place(_ route: ShellRoute, path: Binding<NavigationPath>, accounts: InboxAccountState) -> some View {
         switch route {
-        case .inbox: InboxPage(path: $path, accountState: accounts, embedded: true)
+        case .inbox: InboxPage(path: path, accountState: accounts, embedded: true)
         case .todos: TodosView()
         case .machines: MachinesView()
         case .extensionPage(let r): ExtensionNavPage(route: r)
