@@ -32,13 +32,11 @@ const leaderToolsByStep = new WeakMap();
 function sessionLeaderTools(context) {
   const sessionId = toolSession(context);
   if (!sessionId || isAssistant(sessionId)) return Promise.resolve([]);
-  const signal = context.signal;
-  const prior = signal && leaderToolsByStep.get(signal);
-  if (prior?.sessionId === sessionId) return prior.tools;
-  const tools = rt.tools({ leaderOnly: true, sessionId, signal }).catch(() => []).finally(() => {
-    if (signal && leaderToolsByStep.get(signal)?.tools === tools) leaderToolsByStep.delete(signal);
-  });
-  if (signal) leaderToolsByStep.set(signal, { sessionId, tools });
+  let tools = leaderToolsByStep.get(context);
+  if (!tools) {
+    tools = rt.tools({ leaderOnly: true, sessionId, signal: context.signal }).catch(() => []);
+    leaderToolsByStep.set(context, tools);
+  }
   return tools;
 }
 

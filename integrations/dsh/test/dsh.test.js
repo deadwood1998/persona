@@ -1094,7 +1094,7 @@ test('leader tools activate only for the calling leader and invoke the hub as it
   await registeredPlan.def.execute({ tasks: [] }, leaderStep)
   assert.deepEqual(n.toolCalls, [{ name: 'task_plan', args: { tasks: [] }, session_id: 'session-leader' }])
   leader = ''
-  assert.equal(await registeredPlan.opts.when(leaderStep), false)
+  assert.equal(await registeredPlan.opts.when(context('session-leader')), false)
 })
 
 test('advertises DSH configured models as launchers in hello and launchers.models (#5572)', async (t) => {
