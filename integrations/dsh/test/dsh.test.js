@@ -89,7 +89,7 @@ const text = (seq, role, body) => role === 'user'
   : { type: 'assistant/message', seq, time: 0, surfaceOp: 'append', data: { message: { role: 'assistant', content: [{ type: 'text', text: body }] } } }
 
 async function setup(t, opts = {}) {
-  const n = await startFakeNode(t, { tools: opts.tools })
+  const n = await startFakeNode(t, { tools: opts.tools, features: opts.features })
   const ctl = controller()
   const ev = bus()
   const answered = []
@@ -1038,15 +1038,22 @@ test('the assistant\'s own tools are only for its conversations, called as the a
   const { n, ctl, rt } = await setup(t, { assistant: true, registerTool, tools: n0.tools })
   ctl.add('session-asst', { cwd: '/home/u/.persona/assistant' })
   n.tools = n0.tools
-  const plainTools = n0.tools
-  const withAssistant = [...plainTools, { name: 'ask_user', description: 'Ask', input_schema: { type: 'object' } }]
+  const plainTools = [...n0.tools, { name: 'report_to_supervisor', description: 'Report', input_schema: { type: 'object' } }]
+  const withAssistant = [...n0.tools, { name: 'ask_user', description: 'Ask', input_schema: { type: 'object' } }]
   rt.start()
   await n.ready
   await until('listed', () => n.last('runtime.sessions'))
   // The fake node lists the same tools whatever is asked: make it answer as a hub does.
   n.peer.onRequest = ((orig) => async (m, p) => (m === 'mcp.tools' ? { tools: p?.assistant ? withAssistant : plainTools } : orig(m, p)))(n.peer.onRequest)
   await rt.refreshTools()
-  await until('registered', () => registered.size === 2 * mcpToolNames('example').length)
+  await until('registered', () => registered.size === 3 * mcpToolNames('example').length)
+  const report = registered.get('mcp__persona__report_to_supervisor')
+  assert.equal(report.opts.when({ agent: { session: { id: 'session-asst' } } }), false)
+  assert.equal(report.opts.when({ agent: { session: { id: 'session-other' } } }), true)
+  await report.def.execute({ kind: 'progress' }, { agent: { session: { id: 'session-other' } } })
+  assert.deepEqual(n.toolCalls.at(-1), {
+    name: 'report_to_supervisor', args: { kind: 'progress' }, session_id: 'session-other',
+  })
   const ask = registered.get('mcp__persona__ask_user')
   assert.equal(typeof ask.opts?.when, 'function')
   assert.equal(ask.opts.when({ agent: { session: { id: 'session-asst' } } }), true)
@@ -1056,6 +1063,38 @@ test('the assistant\'s own tools are only for its conversations, called as the a
   assert.deepEqual(n.toolCalls.at(-1), { name: 'ask_user', args: {}, session_id: 'session-asst', assistant: true })
   await registered.get('mcp__persona__phone_contacts').def.execute({}, { agent: { session: { id: 'session-other' } } })
   assert.equal(n.toolCalls.at(-1).assistant, undefined)
+})
+
+test('leader tools activate only for the calling leader and invoke the hub as its Agent', async (t) => {
+  const registered = new Map()
+  const registerTool = (def, opts) => {
+    registered.set(def.name, { def, opts })
+    return () => registered.delete(def.name)
+  }
+  const { n, ctl, rt } = await setup(t, { registerTool, features: ['leader_tools'] })
+  ctl.add('session-leader')
+  ctl.add('session-worker')
+  let leader = 'session-leader'
+  const plan = { name: 'task_plan', description: 'Plan', input_schema: { type: 'object' } }
+  rt.start()
+  await n.ready
+  const original = n.peer.onRequest
+  n.peer.onRequest = async (method, params) => {
+    if (method !== 'mcp.tools' || !params.leader_only) return original(method, params)
+    return { tools: !params.session_id || params.session_id === leader ? [plan] : [] }
+  }
+  await rt.refreshTools()
+  const registeredPlan = await until('leader tools registered', () => registered.get('mcp__persona__task_plan'))
+  const context = id => ({ agent: { session: { id } }, signal: new AbortController().signal })
+  const leaderStep = context('session-leader')
+  const workerStep = context('session-worker')
+  assert.equal(await registeredPlan.opts.when(leaderStep), true)
+  assert.equal(await registeredPlan.opts.when(workerStep), false)
+  await assert.rejects(registeredPlan.def.execute({}, workerStep), /unavailable to this session/)
+  await registeredPlan.def.execute({ tasks: [] }, leaderStep)
+  assert.deepEqual(n.toolCalls, [{ name: 'task_plan', args: { tasks: [] }, session_id: 'session-leader' }])
+  leader = ''
+  assert.equal(await registeredPlan.opts.when(leaderStep), false)
 })
 
 test('advertises DSH configured models as launchers in hello and launchers.models (#5572)', async (t) => {
