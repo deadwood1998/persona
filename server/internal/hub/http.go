@@ -295,6 +295,10 @@ func (h *Hub) auth(next http.Handler) http.Handler {
 				writeErrCode(w, http.StatusForbidden, codeOtherManager, err)
 				return
 			}
+		} else if p.Role == roleScoped {
+			if !h.authorizeScopedDevice(w, r, p) {
+				return
+			}
 		} else if !allowed(p, r.Method, r.URL.Path) {
 			msg := "this device can only read and answer"
 			if p.Role == roleLink || p.Role == roleLinkPair {
@@ -801,7 +805,12 @@ func (h *Hub) startSession(w http.ResponseWriter, r *http.Request) {
 	}
 	// Resuming with a permission mode changes that session's mode: an extension's token, only of a conversation its
 	// extension opened (extension_modes.go).
-	if pr := principalOf(r.Context()); pr.Role == roleExtension && p.ResumeSessionID != "" && p.PermissionMode != "" {
+	pr := principalOf(r.Context())
+	if pr.Role == roleScoped && p.PermissionMode != "" && !slices.Contains(pr.Scopes, extwire.ScopeAgentsPermissionMode) {
+		scopedPermissionDenied(w, extwire.ScopeAgentsPermissionMode)
+		return
+	}
+	if pr.Role == roleExtension && p.ResumeSessionID != "" && p.PermissionMode != "" {
 		if why := h.extensionModeRefused(pr, p.MachineID, p.ResumeSessionID, map[string]any{"permission_mode": p.PermissionMode}); why != "" {
 			h.refuseExtensionMode(w, r, pr, p.MachineID, p.ResumeSessionID, p.PermissionMode, why)
 			return
@@ -1430,6 +1439,13 @@ func (h *Hub) onClientMessage(ctx context.Context, c *client, data []byte) {
 	}
 	if json.Unmarshal(data, &msg) != nil {
 		return
+	}
+	if c.role == roleScoped {
+		switch msg.Type {
+		case "subscribe", "unsubscribe", "ping":
+		default:
+			return
+		}
 	}
 	h.mu.Lock()
 	c.activeAt = time.Now()
