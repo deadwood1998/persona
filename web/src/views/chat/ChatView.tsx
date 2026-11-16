@@ -856,11 +856,11 @@ function ActiveChatView({ mid, sid, assistant, starting: launching, onToggleSide
         before.current = null;
         return;
       }
-      if (projectedLivePage) saved.pages.delete(projectedLivePage);
-      if (projectedOtherPage) saved.pages.delete(projectedOtherPage);
+      const livePageCommitted = projectedLivePage !== undefined && saved.pages.delete(projectedLivePage);
+      const otherPageCommitted = projectedOtherPage !== undefined && saved.pages.delete(projectedOtherPage);
       // The committed page can be wholly outside the rendered stretch. In that case there is no
       // prepend to offset, but the page still settles the anchor.
-      if (!saved.readers && !saved.pages.size) before.current = saved = null;
+      if ((livePageCommitted || otherPageCommitted) && !saved.readers && !saved.pages.size) before.current = saved = null;
     }
     const place = kept.current.place;
     // the line it was at, `offset` under the view's top again; until that line comes in, the chat opens at its end as

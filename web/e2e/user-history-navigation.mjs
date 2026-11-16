@@ -131,6 +131,8 @@ try {
       await first.click();
       await page.locator("[data-nav-loading]").waitFor();
       run.feedbackMs = Date.now() - started;
+      await first.locator("[data-nav-mark^='current']").waitFor();
+      assert.equal(await first.getAttribute("aria-current"), null, "The pending mark is highlighted without moving the current position");
       await shot("loading");
       resume();
       olderGate = undefined;
@@ -145,6 +147,7 @@ try {
       await first.click();
       await page.locator("[data-nav-loading]").waitFor();
       await next.click();
+      await next.locator("[data-nav-mark^='current']").waitFor();
       assert.equal(run.olderReads, readsBefore, "Both selections precede a retry");
       await retryRequest;
       olderStarted = undefined;

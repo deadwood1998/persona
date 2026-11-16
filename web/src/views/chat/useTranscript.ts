@@ -161,23 +161,23 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
   useEffect(() => {
     let dead = false;
     const ctl = new AbortController();
-    const offDeleted = onConversationDeleted((machine, session) => {
-      if (machine !== mid || session !== sid) return;
-      dead = true;
-      ctl.abort();
-      generation.current++;
-      snapshot.current = null;
-      setItems([]);
-      setStreaming("");
-      deltas.current.cancel();
-      send({ type: "unsubscribe", machine_id: mid, session_id: sid });
-    });
     // Older pages and folds still on their way were asked for from what is shown now: they must not land on what replaces it.
     const disownReads = () => {
       invalidateHistoryReads();
       setEarlierPage(undefined);
       setLoadingEarlier(false);
     };
+    const offDeleted = onConversationDeleted((machine, session) => {
+      if (machine !== mid || session !== sid) return;
+      dead = true;
+      ctl.abort();
+      disownReads();
+      snapshot.current = null;
+      setItems([]);
+      setStreaming("");
+      deltas.current.cancel();
+      send({ type: "unsubscribe", machine_id: mid, session_id: sid });
+    });
     disownReads();
     const kept = snapshot.current;
     const cached = cacheScope && kept?.scope === cacheScope && kept.page.machineID === mid && kept.page.sessionID === sid && (kept.page.manager ?? "") === cacheManager
@@ -454,6 +454,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
   }, [opts.rev]);
 
   const loadEarlier = useCallback<Transcript["loadEarlier"]>((options) => {
+    if (conversationDeleted(mid, sid)) return Promise.resolve(undefined);
     if (earlierInFlight.current) return earlierInFlight.current.promise;
     const delay = earlierRetryAt.current - Date.now();
     if (!itemsRef.current.length || !hasMore || (delay > 0 && !options?.waitForRetry)) return Promise.resolve(undefined);

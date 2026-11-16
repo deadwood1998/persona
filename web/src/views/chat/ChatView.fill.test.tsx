@@ -136,9 +136,15 @@ describe("ChatView older pages", () => {
     expect(scroller.scrollTop).toBe(3_250);
     await act(async () => { await vi.advanceTimersByTimeAsync(16); });
 
+    // A live render can still arrive between HTTP completion and the older rows' layout commit.
+    size.scrollHeight = 6_300;
+    transcript.streaming = "A live reply that has grown";
+    act(() => root.render(<ChatView mid="mac" sid="s1" inPage />));
+    expect(scroller.scrollTop).toBe(3_250);
+
     // Only the intermediate page has arrived. Its prepended height must be offset before
     // navigation is allowed to jump to the (still absent) selected input.
-    size.scrollHeight = 6_700;
+    size.scrollHeight = 6_850;
     Object.assign(transcript, {
       items: [{ ...background[0], id: "intermediate#0", seq: 5 }, ...background],
       hasMore: false,
