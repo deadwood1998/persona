@@ -149,13 +149,14 @@ export function NavRail({ ticks, total, scroller, onJump, reset }: {
   }, []);
 
   const indexOf = (id: string | null) => id === null ? -1 : ticks.findIndex((tick) => tick.id === id);
-  const current = active;
-  const center = indexOf(windowCenter ?? pending ?? current);
+  const marked = pending ?? active;
+  const center = indexOf(windowCenter ?? marked);
   const plan = planNavRailTicks(ticks.length, height, center < 0 ? ticks.length - 1 : center);
   const shown = ticks.slice(plan.start, plan.start + plan.count);
   const previewTick = ticks.find((tick) => tick.id === preview);
-  const currentIndex = indexOf(current);
-  const previewIndex = indexOf(preview);
+  const currentIndex = indexOf(marked);
+  const focusedMark = preview ?? pending;
+  const previewIndex = indexOf(focusedMark);
 
   useLayoutEffect(() => {
     if (!card.current || !rail.current || !previewTick) return;
@@ -216,7 +217,7 @@ export function NavRail({ ticks, total, scroller, onJump, reset }: {
       style={{ right, width: M.width }}
       onMouseEnter={() => {
         hovered.current = true;
-        if (!drag.current) setWindowCenter(preview ?? current);
+        if (!drag.current) setWindowCenter(preview ?? active);
         wake();
       }}
       onMouseLeave={() => {
@@ -228,7 +229,7 @@ export function NavRail({ ticks, total, scroller, onJump, reset }: {
       }}
       onFocus={() => {
         focused.current = true;
-        if (preview === null && !drag.current) pick(current ?? ticks[0].id, "keyboard");
+        if (preview === null && !drag.current) pick(active ?? ticks[0].id, "keyboard");
         else wake();
       }}
       onBlur={(e) => {
@@ -243,7 +244,7 @@ export function NavRail({ ticks, total, scroller, onJump, reset }: {
       }}
       onKeyDown={(e) => {
         if (e.nativeEvent.isComposing || e.altKey || e.ctrlKey || e.metaKey) return;
-        const old = indexOf(preview ?? current);
+        const old = indexOf(preview ?? active);
         let next: number | null = null;
         if (e.key === "ArrowDown" || e.key === "ArrowRight") next = Math.min(ticks.length - 1, Math.max(0, old + 1));
         if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = Math.max(0, old - 1);
@@ -258,7 +259,7 @@ export function NavRail({ ticks, total, scroller, onJump, reset }: {
         } else if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           e.stopPropagation();
-          const id = preview ?? current ?? ticks[0].id;
+          const id = preview ?? active ?? ticks[0].id;
           jump(id);
         } else if (e.key === "Escape") {
           e.preventDefault();
@@ -308,8 +309,8 @@ export function NavRail({ ticks, total, scroller, onJump, reset }: {
       <span className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</span>
       {shown.map((tick, k) => {
         const i = plan.start + k;
-        const isCurrent = tick.id === current;
-        const isPreview = tick.id === preview;
+        const isCurrent = tick.id === active;
+        const isPreview = tick.id === focusedMark;
         const mark = navRailMark(i, ticks.length, currentIndex < 0 ? null : currentIndex, previewIndex < 0 ? null : previewIndex);
         return (
           <button
@@ -331,7 +332,7 @@ export function NavRail({ ticks, total, scroller, onJump, reset }: {
             <span
               aria-hidden
               data-nav-mark={mark.state}
-              className={cx("shrink-0 rounded-full transition-[width,height,background-color,opacity] duration-150 motion-reduce:transition-none", isCurrent ? "bg-ink" : isPreview ? "bg-ink-2" : "bg-ink-3")}
+              className={cx("shrink-0 rounded-full transition-[width,height,background-color,opacity] duration-150 motion-reduce:transition-none", tick.id === marked ? "bg-ink" : isPreview ? "bg-ink-2" : "bg-ink-3")}
               style={{ width: mark.width, height: mark.height, opacity: mark.opacity }}
             />
           </button>

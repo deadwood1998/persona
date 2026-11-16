@@ -229,8 +229,8 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
       if (ready && !gap) save(); // a page with a hole is not kept: the fill saves once it is closed
     };
     const rewritten = () => {
-      dead = true; // invalidate in-flight reads before React runs the next effect
-      generation.current++;
+      dead = true;
+      disownReads(); // invalidate in-flight reads before React runs the next effect
       if (cacheScope) discardFeedCache(cacheScope);
       else discardMemoryPage(memoryScope, mid, sid);
       snapshot.current = null;
