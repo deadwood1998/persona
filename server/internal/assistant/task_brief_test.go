@@ -576,7 +576,10 @@ func TestContinuationUsesAuthorizedScope(t *testing.T) {
 	s, f, asked := briefService(t, "keep the recurring check enabled")
 	const original = "the recurring check stays enabled"
 	const effective = "report the result of one inspection"
-	got, isErr := tool(t, s, "task_plan", briefTask(map[string]any{"done_when": []string{original}}))
+	got, isErr := tool(t, s, "task_plan", briefTask(map[string]any{
+		"title": "Verify the recurring check", "goal": "Check the existing schedule",
+		"prompt": "Verify the check's status", "done_when": []string{original},
+	}))
 	if isErr {
 		t.Fatal(got)
 	}
