@@ -7,7 +7,7 @@ import { foldedState } from "./child-sessions";
 import { foldRows } from "./folded-rows";
 import { getState, onHubEvent, subscribe, useStore } from "./store";
 import { SESSIONS_LIST_FEATURE } from "./session-list";
-import { runtimeSessions } from "./runtime-list";
+import { runtimeAgents, runtimeSessions, supportsPagedAgents } from "./runtime-list";
 import type { Session } from "./types";
 
 /** The agents the lists show and count: without the child sessions folded under one of them, each parent in its folded
@@ -216,16 +216,18 @@ export function othersWaiting(badge: number, open: Session | undefined, quietCou
   return Math.max(0, badge - (open && !open.assistant && (quietCounted || !open.quiet) && foldedState(open) === "needs_you" ? 1 : 0));
 }
 
+const scopedAgentCounts = () => runtimeAgents.getSnapshot().counts;
+
 export function useCounts() {
   const all = useAgentSessions();
   const interactions = useStore((s) => s.interactions.length);
-  const counts = useStore((s) => s.sessionCounts);
-  const bounded = useStore((s) => s.features.includes(SESSIONS_LIST_FEATURE));
+  const paged = useStore((s) => supportsPagedAgents(s.features));
+  const counts = useSyncExternalStore(runtimeAgents.subscribe, scopedAgentCounts, scopedAgentCounts);
   return useMemo(() => {
-    if (!bounded || !counts) return { ...stateCounts(all), interactions, quietCounted: false };
+    if (!paged || !counts) return { ...stateCounts(all), interactions, quietCounted: false };
     const needs = counts.state.needs_you ?? 0;
     return { needs, working: counts.state.working ?? 0, unread: counts.state.unread ?? 0, badge: needs, interactions, quietCounted: true };
-  }, [all, interactions, counts, bounded]);
+  }, [all, interactions, counts, paged]);
 }
 
 // A read that follows a failed one counts as failed until one comes back: each attempt clears the list's error while it
