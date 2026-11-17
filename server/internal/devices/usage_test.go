@@ -115,7 +115,7 @@ type usageMemStore struct {
 
 func (s *usageMemStore) PutUsage(_ context.Context, machine string, buckets []proto.UsageBucket, replaceFrom time.Time) error {
 	s.mu.Lock()
-	s.writes = append(s.writes, usageWrite{machine, buckets, replaceFrom})
+	s.writes = append(s.writes, usageWrite{machine: machine, buckets: buckets, replaceFrom: replaceFrom})
 	s.mu.Unlock()
 	s.done <- struct{}{}
 	return nil

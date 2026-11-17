@@ -61,6 +61,7 @@ type usageWrite struct {
 	machine     string
 	buckets     []proto.UsageBucket
 	replaceFrom time.Time
+	add         bool
 }
 
 // onUsage takes a node's "usage" notification: the island's sums (in memory), and Postgres for the charts.
@@ -71,11 +72,12 @@ func (d *Devices) onUsage(machine string, params json.RawMessage, now time.Time)
 	var p struct {
 		Buckets []proto.UsageBucket `json:"buckets"`
 		Full    bool                `json:"full"`
+		Add     bool                `json:"add"`
 	}
 	if json.Unmarshal(params, &p) != nil || (len(p.Buckets) == 0 && !p.Full) {
 		return
 	}
-	w := usageWrite{machine: machine, buckets: p.Buckets}
+	w := usageWrite{machine: machine, buckets: p.Buckets, add: p.Add}
 	if p.Full {
 		w.replaceFrom = now.Add(-usageNodeWindow).Truncate(time.Minute).Add(time.Minute)
 	}
@@ -180,7 +182,19 @@ func (d *Devices) saveUsage(ctx context.Context, st usageStore, writes []usageWr
 	if !ok {
 		for _, w := range writes {
 			wctx, cancel := context.WithTimeout(ctx, usageWriteTimeout)
-			if err := st.PutUsage(wctx, w.machine, w.buckets, w.replaceFrom); err != nil && ctx.Err() == nil {
+			var err error
+			if w.add {
+				if as, ok := st.(interface {
+					AddUsage(context.Context, string, []proto.UsageBucket) error
+				}); ok {
+					err = as.AddUsage(wctx, w.machine, w.buckets)
+				} else {
+					err = errors.New("store does not support additive usage")
+				}
+			} else {
+				err = st.PutUsage(wctx, w.machine, w.buckets, w.replaceFrom)
+			}
+			if err != nil && ctx.Err() == nil {
 				d.logf("[%s] save usage: %v", w.machine, err)
 			}
 			cancel()
@@ -189,7 +203,7 @@ func (d *Devices) saveUsage(ctx context.Context, st usageStore, writes []usageWr
 	}
 	batch := make([]db.UsageWrite, len(writes))
 	for i, w := range writes {
-		batch[i] = db.UsageWrite{Machine: w.machine, Buckets: w.buckets, ReplaceFrom: w.replaceFrom}
+		batch[i] = db.UsageWrite{Machine: w.machine, Buckets: w.buckets, ReplaceFrom: w.replaceFrom, Add: w.add}
 	}
 	wctx, cancel := context.WithTimeout(ctx, usageWriteTimeout)
 	defer cancel()
