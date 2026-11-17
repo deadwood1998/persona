@@ -221,13 +221,18 @@ const scopedAgentCounts = () => runtimeAgents.getSnapshot().counts;
 export function useCounts() {
   const all = useAgentSessions();
   const interactions = useStore((s) => s.interactions.length);
-  const paged = useStore((s) => supportsPagedAgents(s.features));
-  const counts = useSyncExternalStore(runtimeAgents.subscribe, scopedAgentCounts, scopedAgentCounts);
+  const { bounded, pagedAgents, aggregate } = useStore((s) => ({
+    bounded: s.features.includes(SESSIONS_LIST_FEATURE),
+    pagedAgents: supportsPagedAgents(s.features),
+    aggregate: s.sessionCounts,
+  }));
+  const scoped = useSyncExternalStore(runtimeAgents.subscribe, scopedAgentCounts, scopedAgentCounts);
+  const counts = pagedAgents ? scoped : aggregate;
   return useMemo(() => {
-    if (!paged || !counts) return { ...stateCounts(all), interactions, quietCounted: false };
+    if (!bounded || !counts) return { ...stateCounts(all), interactions, quietCounted: false };
     const needs = counts.state.needs_you ?? 0;
     return { needs, working: counts.state.working ?? 0, unread: counts.state.unread ?? 0, badge: needs, interactions, quietCounted: true };
-  }, [all, interactions, counts, paged]);
+  }, [all, interactions, counts, bounded]);
 }
 
 // A read that follows a failed one counts as failed until one comes back: each attempt clears the list's error while it

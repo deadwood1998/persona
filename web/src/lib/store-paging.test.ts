@@ -98,14 +98,11 @@ describe("negotiated bounded runtime lists", () => {
     expect(countsShown()).toMatchObject({ needs: 0, badge: 0 });
   });
 
-  it("falls back to visible Agent rows on a hub without the scoped query", async () => {
+  it("retains the legacy aggregate on a paged hub without the scoped query", async () => {
     hello(["sessions_list", "sessions_lookup"]);
     await settle();
-    changed = [session("agent", { state: "working" }), session("assistant", { assistant: true, state: "working" })];
-    Socket.last.push({ type: "sessions_list", revision: "r2" });
-    await settleThrottled();
 
-    expect(countsShown()).toMatchObject({ needs: 0, working: 1, unread: 0, badge: 0, quietCounted: false });
+    expect(countsShown()).toMatchObject({ needs: 3, working: 5, unread: 4, badge: 3, quietCounted: true });
     expect(requests.some((url) => url.searchParams.has("agents_only"))).toBe(false);
   });
 
