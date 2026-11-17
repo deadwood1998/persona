@@ -387,7 +387,9 @@ export async function brotliCopies(dir: string, files: string[]): Promise<{ file
 // outbox's unseen rows in lib/seen-outbox.ts) adds 112 B in ja, measured in one environment against main 7f756aa00a (ja
 // 482,373 B to 482,485 B; en 479,275 B to 479,391 B, zh-Hans 480,079 B to 480,221 B). Main had 153 B of room; the
 // budget stays.
-export const FIRST_SCREEN_BUDGET = 482_526;
+// #7522: desktop shell gutters and card corners add 242 B in each language against a2531b0b6
+// (ja 482,485 B to 482,727 B). The budget grows by that measured amount to keep main's existing room.
+export const FIRST_SCREEN_BUDGET = 482_768;
 // The hash in a built file's name: the 8 characters of Rollup's [hash] (url-safe base64) between "-" and the
 // extension, as vite.config.ts names every chunk and asset ("assets/[name]-[hash].js", "[name]-[hash][extname]").
 const NAME_HASH = /-([A-Za-z0-9_-]{8})\.[^./]+$/;
