@@ -10,3 +10,9 @@
 - After changing a shared helper, also run the new-session tests that depend on it (#2302). Changes to `AgentModel.label` affect the fallback in `defaultModelDetail`, even if the new-session page itself is unchanged. When updating display expectations, retain request assertions for the raw model ID and effort.
 
 If Android's existing input bar has no model list / current-model data, do not add a new query and selection flow just for a display change. Reuse the session model already passed in, and preserve the existing fallback when it is missing.
+
+## Gateway reply names are not launch selections (#10125)
+
+A gateway can echo a different model ID from the one the launcher accepted. Keep the launch ID in node state and use it for assistant carry-over; leave the echoed name available for display. Distinguish an explicitly empty launch model (launcher default) from missing metadata on an older node. Configuration and conversation picks still take precedence.
+
+Session metadata has two encoders: adding a field to `proto.Session` also requires its line and layout hash in `session_wire.go`. Run the wire/reflection equality and allocation tests together; falling back to reflection preserves data but can break otherwise unrelated session-list allocation budgets.

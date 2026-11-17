@@ -422,6 +422,8 @@ func (n *Node) decorateState(s *proto.Session) (sessionState, bool) {
 	if ok {
 		s.StartedByPersona = true
 		s.Launcher = st.Launcher
+		model := st.Model
+		s.RequestedModel = &model
 		// A row without a pane is listed where its record says it started, when that is an assistant or health
 		// directory: not where a `cd` in its transcript left it (#2368). A pane's directory is its host's.
 		if s.Cwd == "" || s.PaneID == "" && identity.IsAssistantDir(st.Cwd) {
