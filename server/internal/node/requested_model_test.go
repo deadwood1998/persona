@@ -22,7 +22,7 @@ func TestRequestedModelSurvivesStateReloadAndGatewayEcho(t *testing.T) {
 			n := &Node{state: newState()}
 			n.state.merge(restored)
 			row := proto.Session{SessionID: "chat", Model: "group/auto-large"}
-			n.decorateState(&row)
+			n.decorateState(&row, true)
 			wire, err := json.Marshal(row)
 			if err != nil {
 				t.Fatal(err)
@@ -42,7 +42,7 @@ func TestRequestedModelSurvivesStateReloadAndGatewayEcho(t *testing.T) {
 	}
 	n := &Node{state: newState()}
 	row := proto.Session{SessionID: "observed", Model: "reported/model"}
-	n.decorateState(&row)
+	n.decorateState(&row, true)
 	if row.RequestedModel != nil {
 		t.Fatal("an observed session has no requested model evidence")
 	}
