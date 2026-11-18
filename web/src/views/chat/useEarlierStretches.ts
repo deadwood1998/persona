@@ -15,7 +15,7 @@ export interface LiveTranscript {
   loading: boolean;
   loadingEarlier: boolean;
   earlierPage?: symbol;
-  loadEarlier: () => Promise<symbol | undefined>;
+  loadEarlier: (options?: { waitForRetry: boolean }) => Promise<symbol | undefined>;
   expandFold: (fold: Item) => Promise<boolean | void>;
 }
 
@@ -35,7 +35,7 @@ export interface EarlierStretch {
 export interface StretchesReport {
   hasMore: boolean;
   loading: boolean;
-  loadEarlier: () => Promise<symbol | undefined>;
+  loadEarlier: LiveTranscript["loadEarlier"];
   /** Identities of the live and previous-session pages accounted for in the rendered stretches. */
   projectedLivePage?: symbol;
   projectedOtherPage?: symbol;
@@ -75,7 +75,7 @@ export interface Stitched {
   hasMore: boolean;
   loadingEarlier: boolean;
   /** Loads what comes next going back: the live session's older page, or the next stretch's. */
-  loadEarlier: () => Promise<symbol | undefined>;
+  loadEarlier: LiveTranscript["loadEarlier"];
   projectedLivePage?: symbol;
   projectedOtherPage?: symbol;
   /** EarlierStretches' `due`: 0 for a conversation that never switched. */

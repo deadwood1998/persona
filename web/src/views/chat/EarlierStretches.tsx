@@ -22,7 +22,8 @@ import { ChatActionsContext, useChatActions, type ChatActions } from "./chat-act
 import { ChatContext, useChatContext, type ChatContextValue } from "./chat-context";
 import { ChatLineView } from "./Lines";
 import { dayRowKey, withDayDividers } from "./day-dividers";
-import type { EarlierStretch, StretchesHost } from "./useEarlierStretches";
+import type { EarlierStretch, LiveTranscript, StretchesHost } from "./useEarlierStretches";
+import { waitForEarlierRetry } from "./useTranscript";
 
 const PAGE = "turns=2&fold_work=1&lazy_images=1";
 /** After a page fails, loading waits this long before asking again (scrolling at the top asks on every tick), doubling up
@@ -50,7 +51,7 @@ export default memo(function EarlierStretches({ mid, sid, scope, history, live, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const gen = useRef(0);
-  const inFlight = useRef(false);
+  const inFlight = useRef<{ controller: AbortController; promise: Promise<symbol | undefined> } | null>(null);
   const retryAt = useRef(0);
   const wait = useRef(0);
   // a failed page's wait: when it is over, `due` moves and the chat asks again (ChatView, while its top is in view)
@@ -62,13 +63,17 @@ export default memo(function EarlierStretches({ mid, sid, scope, history, live, 
   }, []);
   useEffect(() => {
     gen.current++;
-    inFlight.current = false;
+    inFlight.current = null;
     retryAt.current = 0;
     wait.current = 0;
     stopRetry();
     setLoading(false);
     setError("");
-    return stopRetry;
+    return () => {
+      inFlight.current?.controller.abort();
+      inFlight.current = null;
+      stopRetry();
+    };
   }, [scope, stopRetry]);
 
   const liveSource = useMemo<StretchSource>(() => ({ items: live.items, hasMore: live.hasMore, ready: !live.loading }), [live.items, live.hasMore, live.loading]);
@@ -137,49 +142,59 @@ export default memo(function EarlierStretches({ mid, sid, scope, history, live, 
   const now = useRef({ plan, windows, stores, live, scope });
   now.current = { plan, windows, stores, live, scope };
 
-  const loadEarlier = useCallback(async () => {
+  const loadEarlier = useCallback<LiveTranscript["loadEarlier"]>(async (options) => {
+    if (inFlight.current) return inFlight.current.promise;
     const { plan: p, windows: ws, stores: have, live: tr, scope: at } = now.current;
     if (p.next === undefined) return;
     const w = ws[p.next];
-    if (w.sid === sid) return tr.loadEarlier();
-    if (inFlight.current || Date.now() < retryAt.current) return;
-    const g = gen.current;
+    if (w.sid === sid) return tr.loadEarlier(options);
+    const delay = retryAt.current - Date.now();
+    if (delay > 0 && !options?.waitForRetry) return;
     const store = have[w.sid];
     const first = store?.ready ? store.items[0] : undefined;
-    inFlight.current = true;
+    const controller = new AbortController();
+    const read = { controller, promise: Promise.resolve<symbol | undefined>(undefined) };
+    inFlight.current = read;
     setLoading(true);
-    try {
-      const page = await api<ItemsPage>(`${sessionPath(mid, w.sid)}/items?${PAGE}${first ? `&before_seq=${first.seq}` : ""}`);
-      if (g !== gen.current) return;
-      const got = page.items ?? [];
-      const read = got.some((item) => !first || item.seq < first.seq) ? Symbol() : undefined;
-      setState((st) => {
-        const base = st.scope === at ? st.stores : NO_STORES;
-        const cur = base[w.sid];
-        // an empty page ends it whatever it says: asking again from the same place would get the same
-        return { scope: at, page: read, stores: { ...base, [w.sid]: { items: mergeItems(cur?.items ?? [], got), hasMore: Boolean(page.has_more) && got.length > 0, ready: true } } };
-      });
-      setError("");
-      retryAt.current = 0;
-      wait.current = 0;
-      stopRetry();
-      return read;
-    } catch (e) {
-      if (g !== gen.current) return;
-      wait.current = Math.min(wait.current ? wait.current * 2 : RETRY_MS, RETRY_MAX_MS);
-      retryAt.current = Date.now() + wait.current;
-      setError(sessionLoadError(errorText(e)));
-      stopRetry();
-      retryTimer.current = window.setTimeout(() => {
-        retryTimer.current = undefined;
-        if (g === gen.current) setDue((n) => n + 1);
-      }, wait.current);
-    } finally {
-      if (g === gen.current) {
-        inFlight.current = false;
-        setLoading(false);
+    const g = gen.current;
+    const current = () => inFlight.current === read && now.current.scope === at && !controller.signal.aborted;
+    read.promise = (async () => {
+      try {
+        if (delay > 0) await waitForEarlierRetry(delay, controller.signal);
+        if (!current()) return;
+        const page = await api<ItemsPage>(`${sessionPath(mid, w.sid)}/items?${PAGE}${first ? `&before_seq=${first.seq}` : ""}`, { signal: controller.signal });
+        if (!current()) return;
+        const got = page.items ?? [];
+        const pageToken = got.some((item) => !first || item.seq < first.seq) ? Symbol() : undefined;
+        setState((st) => {
+          const base = st.scope === at ? st.stores : NO_STORES;
+          const cur = base[w.sid];
+          // an empty page ends it whatever it says: asking again from the same place would get the same
+          return { scope: at, page: pageToken, stores: { ...base, [w.sid]: { items: mergeItems(cur?.items ?? [], got), hasMore: Boolean(page.has_more) && got.length > 0, ready: true } } };
+        });
+        setError("");
+        retryAt.current = 0;
+        wait.current = 0;
+        stopRetry();
+        return pageToken;
+      } catch (e) {
+        if (!current()) return;
+        wait.current = Math.min(wait.current ? wait.current * 2 : RETRY_MS, RETRY_MAX_MS);
+        retryAt.current = Date.now() + wait.current;
+        setError(sessionLoadError(errorText(e)));
+        stopRetry();
+        retryTimer.current = window.setTimeout(() => {
+          retryTimer.current = undefined;
+          if (g === gen.current) setDue((n) => n + 1);
+        }, wait.current);
+      } finally {
+        if (inFlight.current === read) {
+          inFlight.current = null;
+          setLoading(false);
+        }
       }
-    }
+    })();
+    return read.promise;
   }, [mid, sid, stopRetry]);
 
   const retry = () => {

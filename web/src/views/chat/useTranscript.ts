@@ -27,7 +27,7 @@ interface EarlierRead {
   page?: symbol;
 }
 
-function waitForEarlierRetry(ms: number, signal: AbortSignal): Promise<void> {
+export function waitForEarlierRetry(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const settle = () => {
       clearTimeout(timer);
@@ -101,6 +101,11 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
   const [firstRead, setFirstRead] = useState(false);
   const [error, setError] = useState("");
   const [hasMore, setHasMore] = useState(initial?.hasMore ?? false);
+  const hasMoreRef = useRef(hasMore);
+  const updateHasMore = useCallback((next: boolean) => {
+    hasMoreRef.current = next;
+    setHasMore(next);
+  }, []);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierPage, setEarlierPage] = useState<symbol>();
   const [streaming, setStreaming] = useState("");
@@ -186,7 +191,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
     setLoading(!cached);
     setFirstRead(false);
     setError("");
-    setHasMore(cached?.hasMore ?? false);
+    updateHasMore(cached?.hasMore ?? false);
     deltas.current.flush("");
     liveRaw.current = liveShown.current = "";
     covered.current = 0;
@@ -341,7 +346,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
       if (e.has_more !== undefined) {
         // The replay of a subscribe without since_seq (the first read failed or was refused) stands in for that read.
         latestMore = e.has_more;
-        setHasMore(latestMore);
+        updateHasMore(latestMore);
         setError("");
         const fresh = e.items ?? [];
         const skips = skipsCached(fresh);
@@ -406,7 +411,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
         setItems(refreshed);
         latest = refreshed(latest);
         latestMore = Boolean(p.has_more);
-        setHasMore(latestMore);
+        updateHasMore(latestMore);
         if (p.history) history.current = p.history;
         save();
         showLive(batch);
@@ -446,7 +451,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
       send({ type: "unsubscribe", machine_id: mid, session_id: sid });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mid, sid, nonce, cacheScope, cacheManager, assistant, invalidateHistoryReads]);
+  }, [mid, sid, nonce, cacheScope, cacheManager, assistant, invalidateHistoryReads, updateHasMore]);
 
   // After the effect above, which starts each conversation's watch from the rev it has then.
   useEffect(() => {
@@ -457,25 +462,26 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
     if (conversationDeleted(mid, sid)) return Promise.resolve(undefined);
     if (earlierInFlight.current) return earlierInFlight.current.promise;
     const delay = earlierRetryAt.current - Date.now();
-    if (!itemsRef.current.length || !hasMore || (delay > 0 && !options?.waitForRetry)) return Promise.resolve(undefined);
+    if (!itemsRef.current.length || !hasMoreRef.current || (delay > 0 && !options?.waitForRetry)) return Promise.resolve(undefined);
     const read: EarlierRead = { controller: new AbortController(), promise: Promise.resolve(undefined) };
     earlierInFlight.current = read;
     setLoadingEarlier(true);
     read.promise = (async () => {
       const { signal } = read.controller;
+      const current = () => earlierInFlight.current === read && !signal.aborted;
       try {
         if (delay > 0) await waitForEarlierRetry(delay, signal);
-        if (signal.aborted) return;
+        if (!current() || !hasMoreRef.current) return;
         const first = itemsRef.current[0];
         if (!first) return;
         const p = await api<ItemsPage>(`${sessionPath(mid, sid)}/items?${PAGE}&before_seq=${first.seq}`, { signal });
-        if (signal.aborted) return;
+        if (!current()) return;
         if (p.history && history.current && p.history !== history.current) {
           rewrite.current();
           return;
         }
         apply(p.items ?? []);
-        setHasMore(Boolean(p.has_more));
+        updateHasMore(Boolean(p.has_more));
         setError("");
         earlierRetryAt.current = 0;
         earlierWait.current = 0;
@@ -485,7 +491,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
           return read.page;
         }
       } catch (e) {
-        if (signal.aborted) return;
+        if (!current()) return;
         // Kept in state for the caller to show; the next try waits instead of firing on every scroll tick.
         earlierWait.current = Math.min(earlierWait.current ? earlierWait.current * 2 : EARLIER_RETRY_MS, EARLIER_RETRY_MAX_MS);
         earlierRetryAt.current = Date.now() + earlierWait.current;
@@ -498,7 +504,7 @@ export function useTranscript(mid: string, sid: string, opts: { starting?: boole
       }
     })();
     return read.promise;
-  }, [mid, sid, hasMore, apply]);
+  }, [mid, sid, apply, updateHasMore]);
 
   const expandFold = useCallback(
     async (fold: Item): Promise<boolean> => {

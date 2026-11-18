@@ -219,7 +219,7 @@ function visibleHistoryFront(scroller: HTMLElement, live: number) {
   return {
     live,
     stretch: oldest ? Number(oldest.dataset.stretchIndex) : Infinity,
-    stretchSeq: oldest ? Number(oldest.dataset.stretchFirst) : Infinity,
+    stretchSeq: Number(oldest?.dataset.stretchFirst ?? Infinity),
   };
 }
 
