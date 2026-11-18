@@ -1404,3 +1404,7 @@ approval (bypass permissions mode holds Persona's peer messages) read as "Not se
 owner retyped it on the computer. Keep the node's code on the entry and word the bubble from it (`entryReason`, also for
 entries kept from before), draw an uncertain one as waiting (caution color, no "Not sent"), and make a Check that finds
 nothing new say so. The node tells held from merely unconfirmed by the session's permission mode (`peer_held`).
+
+## Deep tree rows need space for their counts (#10477)
+
+A shrinking file name cannot protect an end count when the row itself has unbounded indentation padding. Put the indentation and icon inside the name's shrinkable, clipped region; keep the count outside it with no wrapping. Bound deep indentation to a share of that region so the file name still has room for an ellipsis. Measure bounds against the containing panel, not the viewport, and keep the requested width separate from its temporary fitted width. Verify deep rows at minimum width in a real browser: jsdom cannot detect a clipped minus sign.
