@@ -6,7 +6,7 @@ import { api, credentialOwner, onCredentialChange } from "./api";
 const LEGACY = "persona.agentHideBotmux";
 const PATH = "/agents/display-settings";
 export interface AgentsDisplay { show_botmux: boolean; configured: boolean }
-interface State { value: AgentsDisplay | null; saving: boolean; error?: unknown }
+interface State { value: AgentsDisplay | null; saving: boolean; error?: unknown; retryShow?: boolean }
 let state: State = { value: null, saving: false };
 let revision = 0;
 let reading: Promise<void> | undefined;
@@ -36,9 +36,9 @@ export function refreshAgentsDisplay(): Promise<void> {
       }
       if (mine !== revision) return;
       if (value.configured) forgetLegacy();
-      set({ value, saving: false });
+      set(state.retryShow === undefined ? { value, saving: false } : { ...state, value });
     } catch (error) {
-      if (mine === revision) set({ ...state, error });
+      if (mine === revision && state.retryShow === undefined) set({ ...state, error });
     }
   })();
   reading = work;
@@ -50,14 +50,14 @@ export async function saveAgentsDisplay(show: boolean): Promise<void> {
   credentialOwner();
   if (state.saving) return;
   const mine = ++revision;
-  set({ ...state, saving: true, error: undefined });
+  set({ value: state.value, saving: true });
   try {
     const value = checked(await api<AgentsDisplay>(PATH, { method: "PUT", json: { show_botmux: show } }));
     if (mine !== revision) return;
     if (value.configured) forgetLegacy();
     set({ value, saving: false });
   } catch (error) {
-    if (mine === revision) set({ ...state, saving: false, error });
+    if (mine === revision) set({ ...state, saving: false, error, retryShow: show });
   }
 }
 
@@ -69,4 +69,13 @@ export function resetAgentsDisplay() {
 onCredentialChange(resetAgentsDisplay);
 export function useAgentsDisplay() {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
+}
+
+export function retryAgentsDisplay(): Promise<void> {
+  return state.retryShow === undefined ? refreshAgentsDisplay() : saveAgentsDisplay(state.retryShow);
+}
+
+export function useBotmuxHidden(): boolean {
+  // An unavailable preference might hide these sessions. Keep the last acknowledged choice.
+  return useAgentsDisplay().value?.show_botmux !== true;
 }

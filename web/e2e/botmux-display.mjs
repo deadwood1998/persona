@@ -72,6 +72,11 @@ try {
   // Failed save preserves the acknowledged off value and is recoverable.
   fail=true;await toggle.click();await page.getByText(/Example save failed/).waitFor();assert.equal(await toggle.getAttribute("aria-checked"),"false");fail=false;
   await page.getByRole("button",{name:"Retry",exact:true}).click();await page.getByText(/Example save failed/).waitFor({state:"hidden"});
+  await page.waitForFunction(()=>document.querySelector('[data-settings-row="botmux-display"] [role="switch"]')?.getAttribute("aria-checked")==="true");
+  assert.equal(saved,true);
+  assert.deepEqual(writes.at(-1),{show_botmux:true});
+  await toggle.click();
+  await page.waitForFunction(()=>document.querySelector('[data-settings-row="botmux-display"] [role="switch"]')?.getAttribute("aria-checked")==="false");
   // A second page rereads the shared value; its next list refresh picks up a change.
   const otherContext=await browser.newContext({viewport:{width:1280,height:900},locale:"en-US"});await configure(otherContext);const other=await otherContext.newPage();other.on("pageerror",e=>errors.push(String(e)));other.on("console",m=>{if(m.type()==="error")console.error(m.text());});await other.goto(new URL("/settings?tab=agents#botmux-display",origin).href);
   const second=other.getByRole("switch",{name:"Show botmux sessions in Agents",exact:true});await second.waitFor();assert.equal(await second.getAttribute("aria-checked"),"false");
@@ -88,7 +93,7 @@ try {
   if(paged){primarySocket.send(JSON.stringify({type:"sessions_list"}));}
   else{primarySocket.send(JSON.stringify({type:"sessions",machine_id:"example",sessions:rows}));}
   await page.getByRole("radio",{name:/Lark group/}).waitFor();
-  assert.equal(writes.length,2);
+  assert.deepEqual(writes,[{show_botmux:false},{show_botmux:true},{show_botmux:true},{show_botmux:false}]);
 
   if(paged)assert.ok(reads.some(q=>q.includes("exclude_pane_source=feishu")));
   assert.deepEqual(errors,[]);

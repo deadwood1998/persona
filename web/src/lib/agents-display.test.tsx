@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from "vitest";
-import { refreshAgentsDisplay, resetAgentsDisplay, saveAgentsDisplay, useAgentsDisplay } from "./agents-display";
+import { refreshAgentsDisplay, resetAgentsDisplay, retryAgentsDisplay, saveAgentsDisplay, useAgentsDisplay, useBotmuxHidden } from "./agents-display";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { setToken } from "./api";
@@ -37,6 +37,29 @@ it("a concurrent explicit choice wins at the conditional server boundary",async(
  localStorage.setItem("persona.agentHideBotmux","1");
  const fetcher=vi.mocked(fetch);fetcher.mockImplementationOnce(async()=>{saved=true;return json({show_botmux:true,configured:false});});
  await refreshAgentsDisplay();expect(saved).toBe(true);expect(localStorage.getItem("persona.agentHideBotmux")).toBeNull();
+});
+it("retries the failed write after a background refresh", async () => {
+  await refreshAgentsDisplay();
+  fail = "PUT";
+  await saveAgentsDisplay(false);
+  await refreshAgentsDisplay();
+  fail = "";
+  await retryAgentsDisplay();
+  expect(requests.at(-1)).toEqual({ method: "PUT", body: { show_botmux: false } });
+  expect(saved).toBe(false);
+});
+it("hides botmux rows until the hub acknowledges the display preference", async () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  function Probe() { return <span>{useBotmuxHidden() ? "hidden" : "shown"}</span>; }
+  await act(async () => { root.render(<Probe />); });
+  expect(host.textContent).toBe("hidden");
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 404 }));
+  await act(async () => { await retryAgentsDisplay(); });
+  expect(host.textContent).toBe("hidden");
+  await act(async () => { await retryAgentsDisplay(); });
+  expect(host.textContent).toBe("shown");
+  await act(async () => { root.unmount(); });
 });
 it("does not apply a stale read over a save or a credential change",async()=>{
  let finish!:(response:Response)=>void;
