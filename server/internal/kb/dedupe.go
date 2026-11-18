@@ -239,11 +239,12 @@ func (e *Engine) judgeDuplicate(ctx context.Context, c dedupeCandidate) (same, k
 // hedgeWords in a "same" verdict's reason mean the model doubts it (merges whose reasons read "whether the direction is the same is doubtful",
 // #2546).
 var hedgeWords = []string{"存疑", "不确定", "拿不准", "不一定", "待确认", "或许", "也许", "似乎", "不太像", "可能不是",
-	"uncertain", "unsure", "unclear", "doubt", "not sure", "not certain", "cannot tell", "can’t tell", "maybe", "perhaps", "might", "may be", "possibly", "probably", "seems",
+	"uncertain", "unsure", "unclear", "doubt", "not sure", "not certain", "cannot tell", "can't tell", "maybe", "perhaps", "might", "may be", "may not", "possibly", "probably", "seems",
+	"not the same", "not same", "not identical", "different project", "different work", "distinct projects",
 	"不確か", "不明", "確信でき", "判断でき", "疑問", "疑わし", "かもしれ", "おそらく", "可能性"}
 
 func hedged(reason string) bool {
-	reason = strings.ToLower(reason)
+	reason = strings.ReplaceAll(strings.ToLower(reason), "’", "'")
 	for _, w := range hedgeWords {
 		if strings.Contains(reason, w) {
 			return true
