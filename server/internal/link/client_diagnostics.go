@@ -16,6 +16,7 @@ import (
 )
 
 type diagnosticLogKey struct{}
+type diagnosticTLSKey struct{}
 
 var dialSequence atomic.Uint64
 
@@ -89,6 +90,13 @@ func diagnosticDial(ctx context.Context, url string, options *websocket.DialOpti
 		},
 		GotConn: func(httptrace.GotConnInfo) { mu.Lock(); upgradeStart = time.Now(); phase = "upgrade"; mu.Unlock() },
 	}
+	// WithClientTrace composes hooks in place. Keep the private custom-handshake
+	// observer separate so it never invokes an existing caller's hooks twice.
+	tlsTrace := &httptrace.ClientTrace{
+		TLSHandshakeStart: trace.TLSHandshakeStart,
+		TLSHandshakeDone:  trace.TLSHandshakeDone,
+	}
+	ctx = context.WithValue(ctx, diagnosticTLSKey{}, tlsTrace)
 	conn, resp, err := websocket.Dial(httptrace.WithClientTrace(ctx, trace), url, options)
 	mu.Lock()
 	now := time.Now()
@@ -127,7 +135,7 @@ func diagnosticDial(ctx context.Context, url string, options *websocket.DialOpti
 // Custom TLS dialers perform their real handshake before net/http's automatic
 // callbacks. Trace that boundary too, including failures before returning a connection.
 func tracedHandshake(ctx context.Context, c *tls.Conn) error {
-	trace := httptrace.ContextClientTrace(ctx)
+	trace, _ := ctx.Value(diagnosticTLSKey{}).(*httptrace.ClientTrace)
 	if trace != nil && trace.TLSHandshakeStart != nil {
 		trace.TLSHandshakeStart()
 	}
