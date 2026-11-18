@@ -28,7 +28,11 @@ const FLASH_MS = 1400;
 
 /** `jump`: brings words into view `topOffset` px from the top and keeps them there while the exchanges around them are
  *  drawn (ChatView landRow); without it, the scroller's own smooth scroll. */
-export function CommentMarks({ scroller, jump }: { scroller: RefObject<HTMLDivElement | null>; jump?: (words: Range, topOffset: number) => void }) {
+export function CommentMarks({ scroller, jump, beforeInlineEdit }: {
+  scroller: RefObject<HTMLDivElement | null>;
+  jump?: (words: Range, topOffset: number) => void;
+  beforeInlineEdit: () => void;
+}) {
   const chat = useChatActions();
   const key = chat?.draftKey ?? "";
   const can = Boolean(chat?.canCompose);
@@ -48,7 +52,7 @@ export function CommentMarks({ scroller, jump }: { scroller: RefObject<HTMLDivEl
     };
     if (!can || !el || !sel || sel.isCollapsed || sel.rangeCount === 0 || dragging.current) return hide();
     const range = sel.getRangeAt(0);
-    const text = sel.toString().trim();
+    const text = range.toString().trim();
     if (!text || !el.contains(range.commonAncestorContainer)) return hide();
     const rects = range.getClientRects();
     const last = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
@@ -100,11 +104,12 @@ export function CommentMarks({ scroller, jump }: { scroller: RefObject<HTMLDivEl
   const add = useCallback(() => {
     const cur = picked.current;
     if (!cur || !key) return;
+    if (cur.anchor) beforeInlineEdit();
     addQuote(key, textQuote(cur.text, cur.anchor ?? undefined), true, Boolean(cur.anchor));
     document.getSelection()?.removeAllRanges();
     picked.current = null;
     setPill(null);
-  }, [key]);
+  }, [key, beforeInlineEdit]);
 
   // C, with words picked and the keyboard not in a field
   useEffect(() => {
@@ -201,13 +206,25 @@ export function CommentMarks({ scroller, jump }: { scroller: RefObject<HTMLDivEl
   const editorQuote = editorBox && list.find((q) => q.id === editorBox.id);
   const editor = useRef<HTMLDivElement>(null);
   const editorId = editorBox?.id;
+  const editorAnchor = editorBox?.rects.at(-1);
   useLayoutEffect(() => {
     const el = editor.current;
     const scroll = scroller.current;
-    if (!el || !scroll) return;
-    const overflow = el.getBoundingClientRect().bottom - scroll.getBoundingClientRect().bottom;
-    if (overflow > 0) scroll.scrollTop += overflow;
-  }, [editorId, scroller]);
+    if (!el || !scroll || !editorAnchor) return;
+    const place = () => {
+      const above = editorAnchor.y - scroll.scrollTop;
+      const below = scroll.clientHeight - above - editorAnchor.h;
+      // Keep the passage in place. Open on the roomier side when the editor cannot fit below.
+      const opensAbove = below < el.scrollHeight && above > below;
+      el.style.top = `${opensAbove ? editorAnchor.y : editorAnchor.y + editorAnchor.h}px`;
+      el.style.transform = opensAbove ? "translateY(-100%)" : "";
+      el.style.maxHeight = `${Math.max(0, opensAbove ? above : below)}px`;
+    };
+    place();
+    const resize = new ResizeObserver(place);
+    resize.observe(scroll);
+    return () => resize.disconnect();
+  }, [editorAnchor, scroller]);
 
   return (
     <>
@@ -228,8 +245,11 @@ export function CommentMarks({ scroller, jump }: { scroller: RefObject<HTMLDivEl
                   type="button"
                   aria-expanded={editorId === b.id}
                   aria-label={t("chat-comments.comment_n", { n: b.n })}
-                  onClick={() => editNote(key, b.id, true)}
-                  className="pointer-events-auto absolute flex cursor-pointer items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-accent"
+                  onClick={() => {
+                    beforeInlineEdit();
+                    editNote(key, b.id, true);
+                  }}
+                  className="touch-hit pointer-events-auto absolute! flex cursor-pointer items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-accent"
                   // like a footnote mark: after the words, a little above their line
                   style={{ left: last.x + last.w - 2, top: last.y - DOT / 2, width: DOT, height: DOT }}
                 >
@@ -238,7 +258,7 @@ export function CommentMarks({ scroller, jump }: { scroller: RefObject<HTMLDivEl
                 {editorId === b.id && editorQuote && (
                   <div
                     ref={editor}
-                    className="pointer-events-auto absolute z-10 w-80 max-w-[calc(100%-2rem)] rounded-[10px] bg-surface shadow-overlay"
+                    className="pointer-events-auto absolute z-10 w-80 max-w-[calc(100%-2rem)] overflow-y-auto rounded-[10px] bg-surface shadow-overlay"
                     style={{ left: `clamp(1rem, ${last.x}px, 100% - min(100% - 2rem, 20rem) - 1rem)`, top: last.y + last.h }}
                     data-inline-comment-editor
                   >
