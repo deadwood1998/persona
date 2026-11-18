@@ -3226,3 +3226,14 @@ agent may have added a link. Manager/Todo/credential changes retire old results.
 New copy ships in English, Simplified Chinese and Japanese. Evidence:
 `web/src/ui/TaskRepositoryBindingsEditor.test.tsx` and
 `web/e2e/todo-repositories-browser.py`.
+
+## Shared botmux display setting (#10241)
+
+For people using Agents, Web Settings › Agents reuses `Row`, `Switch`,
+`SettingsHint` and `RowFailed` for **Show botmux sessions in Agents**. The row
+shows the acknowledged shared value; a save disables the switch and shows Saving,
+a failure keeps the last acknowledged value and offers Retry. A nearby Computers
+link explains the independent per-computer inventory switch. The sidebar's
+botmux chip is removed; its Lark group quick filter is absent when its count is
+zero. Complete and paged lists exclude the same hosts before grouping and counts.
+This requested interaction change adds no component, theme or motion pattern.

@@ -1404,3 +1404,13 @@ approval (bypass permissions mode holds Persona's peer messages) read as "Not se
 owner retyped it on the computer. Keep the node's code on the entry and word the bubble from it (`entryReason`, also for
 entries kept from before), draw an uncertain one as waiting (caution color, no "Not sent"), and make a Check that finds
 nothing new say so. The node tells held from merely unconfirmed by the session's permission mode (`peer_held`).
+
+### A local preference moving to shared settings (#10241)
+
+A read-then-write migration can overwrite a choice another browser just saved.
+Use an insert-if-absent at the database's unique key, not a service mutex or an
+unconditional PUT after a GET. Return the current value even when migration loses.
+Keep the legacy key on read/write failure and guard delayed reads with a save and
+credential generation. Filtering must consume the acknowledged shared value in
+both complete and paged lists before grouping/counts; a quick filter must never
+turn the display preference back on as a side effect.

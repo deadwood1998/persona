@@ -5256,3 +5256,25 @@ existing Todo detail routes. `POST /api/v1/todos` accepts optional atomic
 `repository_bindings`; omitted fields preserve all legacy creation behavior.
 The full request, revision and source-snapshot contract is in
 `docs/assistant/todos.md` ("Repository associations").
+
+## Agents display settings
+
+The default manager keeps the paired hub's `agents.show_botmux` boolean in its
+existing settings store, following the Agents triage route's ownership and role
+checks. These are authenticated routes relayed by the hub; clients do not select
+another manager for this shared preference.
+
+| Method | Path | Response / request |
+| --- | --- | --- |
+| GET | `/api/v1/agents/display-settings` | `{show_botmux: true, configured: false}` when unset; otherwise the saved boolean and `configured: true`. Authenticated answer-only devices may read. |
+| PUT | `/api/v1/agents/display-settings` | Full access only (403 otherwise). Requires `{show_botmux: boolean}`. Optional `only_if_unset: true` uses an atomic insert without updating an existing key. Both forms return the current saved value with `configured: true`, including when another writer won. |
+
+Invalid or missing booleans return 400; unavailable storage or failed reads/writes
+return 503, never a default presented as a successful save. The conditional
+migration and an explicit update serialize at the unique settings key across
+processes. Clients remove legacy local preferences only after a configured value
+is confirmed. Refresh on reconnect and the next Agents list refresh. This is a
+display preference only: Web paged lists use `exclude_pane_source=feishu`, complete
+lists exclude botmux hosts before grouping/counting. Inventory and `seeBotmux`
+to-do attribution are unchanged. The per-computer inventory switch is independent
+([engines.md](../integrations/engines.md), “Botmux display preference”).
