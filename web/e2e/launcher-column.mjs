@@ -50,7 +50,7 @@ try {
  await server.listen();
  browser=await chromium.launch({channel:'chrome',headless:true});
  for(const width of [1280,390]) for(const theme of ['light','dark']) for(const size of ['standard','large']) {
-  const context=await browser.newContext({viewport:{width,height:900},colorScheme:theme,hasTouch:width<600});
+  const context=await browser.newContext({viewport:{width,height:900},colorScheme:theme,hasTouch:width<600,reducedMotion:size==='large'?'reduce':'no-preference'});
   const page=await context.newPage(); const errors=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${port}/__launcher-fixture?theme=${theme}&size=${size}`);
@@ -58,6 +58,7 @@ try {
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-model-panel]')).visibility==='visible');
   await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{})));});
   const tag=`${width}-${theme}-${size}`;
+  if(size==='large') assert(await panel.evaluate(el=>parseFloat(getComputedStyle(el).animationDuration)<=0.002),`${tag}: reduced motion`);
   if(!baseline){assert.equal(await panel.locator('[data-panel-quick] [data-panel-row]').count(),3);}
   if(shots)await page.screenshot({path:resolve(shots,`${baseline?'before':'after'}-${tag}.png`)});
   const dimensions=await panel.evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:el.clientWidth,scroll:el.scrollWidth}));

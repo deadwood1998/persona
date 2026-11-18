@@ -65,6 +65,7 @@ interface RowProps {
 
 export function Row({ row, second, describes, keepSecond, asButton, blocked, customizable, flyoutOpen, starred, starRemoves, frozen, onPick, onStar, onCustomize, onCustomizeKey, onForget }: RowProps) {
   const { model, provider } = row;
+  const saved = row.kind === "favorite" || row.kind === "recent";
   const name = row.kind === "typed" ? t("ui-modelpanel.use_typed", { id: model.id }) : row.preset ? row.preset.name : row.kind === "favorite" || row.kind === "recent" ? `${provider.name} · ${model.name}` : model.name;
   // a typed ID's "Use “…”" and a preset (a setup of the profile's, not a copy of one's own) have no star
   const stars = row.kind !== "typed" && row.kind !== "preset";
@@ -136,6 +137,7 @@ export function Row({ row, second, describes, keepSecond, asButton, blocked, cus
         "group/row relative z-[1] flex w-full flex-col rounded-control px-3 py-2 text-[14px] leading-[1.43] text-ink outline-none select-none [&+[data-panel-row]]:mt-1",
         "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
         row.current && "bg-hover-2 data-[glide]:bg-transparent",
+        saved && "min-h-11 justify-center",
         ariaOff || frozen ? "cursor-not-allowed" : "cursor-pointer",
         ariaOff && "opacity-50",
       )}
@@ -187,12 +189,12 @@ export function Row({ row, second, describes, keepSecond, asButton, blocked, cus
           </span>
         </span>
       </div>
-      {second && (keepSecond || idLine !== "always") && (
+      {!saved && second && (keepSecond || idLine !== "always") && (
         <div title={second} className={cx("min-w-0 truncate pt-px pl-[26px] text-[12px] leading-[1.4] text-ink-2", describes && "max-w-[30ch]", !keepSecond && idLine === "touch" && "[@media(hover:none)]:hidden")}>
           {second}
         </div>
       )}
-      {idLine && (
+      {!saved && idLine && (
         <div data-row-id={idLine} className={cx("min-w-0 pt-px pl-[26px]", idLine === "touch" && "hidden [@media(hover:none)]:block")}>
           <div title={model.id} className="line-clamp-2 font-mono text-xs leading-[1.4] break-all text-ink-2">
             {model.id}

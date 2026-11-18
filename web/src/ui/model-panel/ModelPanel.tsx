@@ -1,6 +1,7 @@
 // Shared launcher-first model column (#10249). Selection and setup controls stay in Row and Flyout.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import "./ModelPanel.css";
 import { t } from "../../i18n";
 import {
   engineChoices,
