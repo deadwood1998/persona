@@ -263,6 +263,10 @@
   --font-mono: "JetBrains Mono", "SF Mono", "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
+/* @theme inline expands utility families to literals; resolve the runtime preference for these utilities too. */
+.font-sans { font-family: var(--font-sans); }
+.font-mono { font-family: var(--font-mono); }
+
 body {
   background: var(--page);
   color: var(--ink);
