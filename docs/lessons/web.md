@@ -1412,3 +1412,7 @@ approval (bypass permissions mode holds Persona's peer messages) read as "Not se
 owner retyped it on the computer. Keep the node's code on the entry and word the bubble from it (`entryReason`, also for
 entries kept from before), draw an uncertain one as waiting (caution color, no "Not sent"), and make a Check that finds
 nothing new say so. The node tells held from merely unconfirmed by the session's permission mode (`peer_held`).
+
+### Flat work traces keep expansion separate from execution (#10247)
+
+Changing a live action group's header must not change its identity: search and jump-to-step open those keys, and folded history may replace the first visible item. Close a superseded run inside an already inspected trace, preserve explicit reopen/jump choices, and keep the outer summary's live override separate so completion still collapses it. Count action kinds from the complete group, not the progressive rendering budget; otherwise headers change as idle batches mount. Preview edits only in the current run, while every edit row still opens the complete changes view.
