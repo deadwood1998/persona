@@ -11,12 +11,15 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/nwverse/persona/server/internal/proto"
 )
 
 func TestScopedDeviceToken(t *testing.T) {
 	h := newTestHub(t)
 	h.store = testDB(t)
 	machine := fakeNode(t, 2)
+	machine.sessions = []proto.Session{{SessionID: "s1"}, {SessionID: "health", Space: "health"}}
 	machine.hub = h
 	h.machines = append(h.machines, machine)
 	h.byID[machine.cfg.ID] = machine
@@ -46,6 +49,29 @@ func TestScopedDeviceToken(t *testing.T) {
 	t.Cleanup(func() { _, _ = h.store.RevokeDeviceToken(context.Background(), writeID) })
 	if code, out := call(t, mux, "POST", "/api/v1/sessions", writeToken, `{"machine_id":"m1","permission_mode":"bypassPermissions"}`); code != http.StatusForbidden || out["scope"] != "agents.permission_mode" {
 		t.Fatalf("control-only start with explicit mode: %d %v", code, out)
+	}
+	if code, out := call(t, mux, "POST", "/api/v1/sessions", writeToken, `{"machine_id":"m1","resume_session_id":"s1"}`); code != http.StatusForbidden || out["scope"] != "agents.permission_mode" {
+		t.Fatalf("control-only resume: %d %v", code, out)
+	}
+	h.reported.mu.Lock()
+	h.reported.interactions = map[string]proto.Interaction{
+		"permission": {ID: "permission", MachineID: "m1", SessionID: "s1", Kind: proto.IxPermission},
+		"question":   {ID: "question", MachineID: "m1", SessionID: "s1", Kind: proto.IxQuestion},
+	}
+	h.reported.mu.Unlock()
+	for _, test := range []struct{ action, card, body string }{
+		{"choose", "permission", `{"option":0,"rev":"example"}`},
+		{"resolve", "permission", `{"allow":true}`},
+		{"resolve", "question", `{"allow":true}`},
+		{"reanswer", "permission", `{"text":"example"}`},
+	} {
+		path := "/api/v1/interactions/" + test.card + "/" + test.action
+		if code, out := call(t, mux, "POST", path, writeToken, test.body); code != http.StatusForbidden || out["code"] != "permission_denied" {
+			t.Fatalf("%s: %d %v", path, code, out)
+		}
+	}
+	if code, out := call(t, mux, "GET", "/api/v1/sessions/m1/health/items", readToken, ""); code != http.StatusNotFound {
+		t.Fatalf("health transcript: %d %v", code, out)
 	}
 	if code, out := call(t, mux, "POST", "/api/v1/sessions/m1/s1/messages", writeToken, `{"text":"\u001b"}`); code != http.StatusForbidden || out["code"] != codeTerminalControls {
 		t.Fatalf("terminal escape: %d %v", code, out)
@@ -91,6 +117,10 @@ func TestScopedDeviceToken(t *testing.T) {
 	defer conn.CloseNow()
 
 	h.broadcast(map[string]any{"type": "inbox", "body": "private"})
+	h.broadcast(map[string]any{"type": "items", "machine_id": "m1", "session_id": "s1", "body": "owner push"})
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"subscribe","machine_id":"m1","session_id":"health","since_seq":1}`)); err != nil {
+		t.Fatal(err)
+	}
 	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"subscribe","machine_id":"m1","session_id":"s1","since_seq":1}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +135,8 @@ func TestScopedDeviceToken(t *testing.T) {
 				ID string `json:"id"`
 			} `json:"items"`
 		}
-		if json.Unmarshal(raw, &event) != nil || !scopedSocketEvent(raw) {
+		if json.Unmarshal(raw, &event) != nil || !scopedSocketEvent(event.Type) || strings.Contains(string(raw), "owner push") ||
+			strings.Contains(string(raw), `"health"`) {
 			t.Fatalf("unexpected event: %s", raw)
 		}
 		if event.Type == "items" {

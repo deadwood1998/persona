@@ -66,11 +66,13 @@ The web client may send `"replaces":"<this browser's previous device id>"`: once
   with `scope` when the route requires one.
   - `agents.read` opens Agent reads from the [shared route scope table](../extensions/extensions.md#hub-api-scopes-1855),
     plus the machine launcher and launcher model lists and `GET /api/v1/ws`. That socket accepts `subscribe`, `unsubscribe`
-    and application `ping`, and carries session lists, deltas and the subscribed Agent's chat events.
+    and application `ping`, and carries filtered session lists and the subscribed Agent's chat events.
+    The socket excludes health conversations and does not replay the owner's event log.
   - `agents.control` opens the shared Agent control routes for starting, messaging and interrupting Agents and
-    other chat actions. Card resolution is limited to Agent questions. Terminal control characters are rejected.
+    other chat actions. Only visible pending Agent questions can be answered. Terminal control characters are rejected.
   - `agents.permission_mode` is a separate grant required to change a session's permission mode or specify one
-    when starting a session. It opens only the permission mode field on the modes endpoint.
+    when starting a session. Resuming a session also requires this grant because resume can retain its permission mode.
+    It opens only the permission mode field on the modes endpoint.
   - Machine-specific restrictions are unsupported. A request with `machines` returns 400
     `unsupported_machine_restriction`. Files, device administration and other ungranted routes stay closed.
     A scoped credential stays with the hub that issued it. After a mesh center migration, issue a new one at the new center.

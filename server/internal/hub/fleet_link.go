@@ -622,7 +622,7 @@ func (h *Hub) fleetRoutesRelayed(api *http.ServeMux) {
 		pr := principalOf(r.Context())
 		if pr.Role == roleScoped {
 			ix, pending := h.pendingInteraction(r.PathValue("id"))
-			if !pending || ix.Kind != proto.IxQuestion || res.Approve != nil || res.Mode != "" || res.Always || len(res.Keys) > 0 || len(res.PreKeys) > 0 {
+			if !pending || !h.scopedQuestion(ix) || res.Approve != nil || res.Allow != nil || res.Mode != "" || res.Always || len(res.Keys) > 0 || len(res.PreKeys) > 0 {
 				scopedPermissionDenied(w, "")
 				return
 			}
