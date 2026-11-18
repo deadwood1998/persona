@@ -1,0 +1,258 @@
+[
+  {
+    "tag": "1280-light-default",
+    "geometry": {
+      "width": 676,
+      "scroll": 676,
+      "right": 1280
+    },
+    "feedback": [
+      {
+        "direction": "right",
+        "clickToRenderedFullMs": 345,
+        "requestStartToResponseEndMs": 1.9
+      },
+      {
+        "direction": "down",
+        "clickToRenderedFullMs": 350.8,
+        "requestStartToResponseEndMs": 2.5
+      }
+    ],
+    "localFeedback": [
+      {
+        "disabledAfterMs": 1.5
+      },
+      {
+        "disabledAfterMs": 0.9
+      },
+      {
+        "disabledAfterMs": 0.8
+      }
+    ],
+    "checks": "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow"
+  },
+  {
+    "tag": "1280-light-large",
+    "geometry": {
+      "width": 676,
+      "scroll": 676,
+      "right": 1280
+    },
+    "feedback": [
+      {
+        "direction": "right",
+        "clickToRenderedFullMs": 346.7,
+        "requestStartToResponseEndMs": 2
+      },
+      {
+        "direction": "down",
+        "clickToRenderedFullMs": 350.7,
+        "requestStartToResponseEndMs": 1.9
+      }
+    ],
+    "localFeedback": [
+      {
+        "disabledAfterMs": 1.5
+      },
+      {
+        "disabledAfterMs": 1
+      },
+      {
+        "disabledAfterMs": 0.9
+      }
+    ],
+    "checks": "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow"
+  },
+  {
+    "tag": "1280-dark-default",
+    "geometry": {
+      "width": 676,
+      "scroll": 676,
+      "right": 1280
+    },
+    "feedback": [
+      {
+        "direction": "right",
+        "clickToRenderedFullMs": 343.4,
+        "requestStartToResponseEndMs": 1.7
+      },
+      {
+        "direction": "down",
+        "clickToRenderedFullMs": 350.1,
+        "requestStartToResponseEndMs": 1.7
+      }
+    ],
+    "localFeedback": [
+      {
+        "disabledAfterMs": 1.5
+      },
+      {
+        "disabledAfterMs": 0.8
+      },
+      {
+        "disabledAfterMs": 0.8
+      }
+    ],
+    "checks": "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow"
+  },
+  {
+    "tag": "1280-dark-large",
+    "geometry": {
+      "width": 676,
+      "scroll": 676,
+      "right": 1280
+    },
+    "feedback": [
+      {
+        "direction": "right",
+        "clickToRenderedFullMs": 345.8,
+        "requestStartToResponseEndMs": 1.8
+      },
+      {
+        "direction": "down",
+        "clickToRenderedFullMs": 351.4,
+        "requestStartToResponseEndMs": 1.7
+      }
+    ],
+    "localFeedback": [
+      {
+        "disabledAfterMs": 1.6
+      },
+      {
+        "disabledAfterMs": 0.9
+      },
+      {
+        "disabledAfterMs": 0.8
+      }
+    ],
+    "checks": "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow"
+  },
+  {
+    "tag": "390-light-default",
+    "geometry": {
+      "width": 390,
+      "scroll": 390,
+      "right": 390
+    },
+    "feedback": [
+      {
+        "direction": "right",
+        "clickToRenderedFullMs": 343.1,
+        "requestStartToResponseEndMs": 1.5
+      },
+      {
+        "direction": "down",
+        "clickToRenderedFullMs": 350.8,
+        "requestStartToResponseEndMs": 1.7
+      }
+    ],
+    "localFeedback": [
+      {
+        "disabledAfterMs": 1.3
+      },
+      {
+        "disabledAfterMs": 0.9
+      },
+      {
+        "disabledAfterMs": 0.7
+      }
+    ],
+    "checks": "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow"
+  },
+  {
+    "tag": "390-light-large",
+    "geometry": {
+      "width": 390,
+      "scroll": 390,
+      "right": 390
+    },
+    "feedback": [
+      {
+        "direction": "right",
+        "clickToRenderedFullMs": 344.2,
+        "requestStartToResponseEndMs": 2.2
+      },
+      {
+        "direction": "down",
+        "clickToRenderedFullMs": 351.4,
+        "requestStartToResponseEndMs": 1.6
+      }
+    ],
+    "localFeedback": [
+      {
+        "disabledAfterMs": 1.3
+      },
+      {
+        "disabledAfterMs": 0.8
+      },
+      {
+        "disabledAfterMs": 0.9
+      }
+    ],
+    "checks": "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow"
+  },
+  {
+    "tag": "390-dark-default",
+    "geometry": {
+      "width": 390,
+      "scroll": 390,
+      "right": 390
+    },
+    "feedback": [
+      {
+        "direction": "right",
+        "clickToRenderedFullMs": 348,
+        "requestStartToResponseEndMs": 1.6
+      },
+      {
+        "direction": "down",
+        "clickToRenderedFullMs": 366.6,
+        "requestStartToResponseEndMs": 1.5
+      }
+    ],
+    "localFeedback": [
+      {
+        "disabledAfterMs": 1.5
+      },
+      {
+        "disabledAfterMs": 0.9
+      },
+      {
+        "disabledAfterMs": 0.9
+      }
+    ],
+    "checks": "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow"
+  },
+  {
+    "tag": "390-dark-large",
+    "geometry": {
+      "width": 390,
+      "scroll": 390,
+      "right": 390
+    },
+    "feedback": [
+      {
+        "direction": "right",
+        "clickToRenderedFullMs": 346.8,
+        "requestStartToResponseEndMs": 1.6
+      },
+      {
+        "direction": "down",
+        "clickToRenderedFullMs": 349.8,
+        "requestStartToResponseEndMs": 1.8
+      }
+    ],
+    "localFeedback": [
+      {
+        "disabledAfterMs": 1.4
+      },
+      {
+        "disabledAfterMs": 0.9
+      },
+      {
+        "disabledAfterMs": 0.8
+      }
+    ],
+    "checks": "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow"
+  }
+]

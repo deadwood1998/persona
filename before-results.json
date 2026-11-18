@@ -1,0 +1,46 @@
+[
+  {
+    "width": 1280,
+    "theme": "light",
+    "requestStartToResponseEndMs": 3.5,
+    "local": [
+      {
+        "nextFrameMs": 10.5,
+        "working": true
+      }
+    ]
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "requestStartToResponseEndMs": 1.6,
+    "local": [
+      {
+        "nextFrameMs": 10.699999988079071,
+        "working": true
+      }
+    ]
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "requestStartToResponseEndMs": 2.2,
+    "local": [
+      {
+        "nextFrameMs": 11.900000005960464,
+        "working": true
+      }
+    ]
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "requestStartToResponseEndMs": 1.6,
+    "local": [
+      {
+        "nextFrameMs": 10.5,
+        "working": true
+      }
+    ]
+  }
+]
