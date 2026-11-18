@@ -320,6 +320,8 @@ export interface PillSetup {
   engineLabel?: string;
   /** The provider (launcher) name: its tile, and the tooltip. */
   provider: string;
+  /** Explicit Agent launcher name, matching its panel row; absent when only an inferred engine is known. */
+  launcherName?: string;
   /** The model's name; absent while not known (no reply yet and no list to say what the launcher runs by default). */
   model?: string;
   effort?: string;

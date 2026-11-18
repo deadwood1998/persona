@@ -149,7 +149,8 @@ describe("the pill's states", () => {
     expect(html).toContain('data-model-pill="pending"');
     expect(html.indexOf("<svg")).toBeLessThan(html.indexOf(">C<")); // the clock before the tile
     // the target's engine before the name, gone when the pill is narrow
-    expect(html).toContain('<span data-pill-target="true" class="max-w-[96px] shrink-0 truncate text-ink-3 @max-[600px]/composer:hidden">Codex</span>');
+    expect(html).toMatch(/data-pill-target[^>]*>Codex<\/span>/);
+    expect(classOf(html, "data-pill-target")).toContain("@max-[600px]/composer:hidden");
     expect(html).toContain('data-pill-engine="codex"');
     expect(html).toContain(`title="${t("chat-modelpill.current_and_next", { current: "Claude Code · Opus 5.5 · gateway · 高", next: "Codex · 5.5 · cx · 低" })}"`);
     expect(html).toContain(`aria-label="${t("chat-modelpill.aria_pending_effort", { agent: "Codex", model: "5.5", effort: "低" })}"`);
@@ -263,6 +264,33 @@ const modes = () => calls.filter((c) => c.url.endsWith("/modes")).map((c) => c.b
 const provider = (id: string) => panel.props!.providers.find((p: PanelProvider) => p.id === id)!;
 
 describe("an Agent's pill", () => {
+  it("names same-model launchers exactly as the panel, without changing the model or effort", async () => {
+    await show(agent());
+    expect(pill()!.querySelector("[data-pill-target]")?.textContent).toBe("gateway");
+    expect(pill()!.getAttribute("aria-label")).toContain("gateway · Opus 5.5");
+    await open();
+    expect(provider("gateway").name).toBe(pill()!.querySelector("[data-pill-target]")?.textContent);
+    await show(agent({ launcher: "claude" }));
+    expect(pill()!.querySelector("[data-pill-target]")?.textContent).toBe("claude");
+    expect(pill()!.textContent).toContain("Opus 5.5");
+    expect(pill()!.querySelector("[data-pill-effort]")?.textContent).toBe("高");
+    expect(modes()).toEqual([]);
+  });
+
+  it("keeps a model-only label when the launcher is unknown, but names a queued target", async () => {
+    await show(agent({ launcher: undefined }));
+    expect(pill()!.querySelector("[data-pill-target]")).toBeNull();
+    expect(pill()!.getAttribute("aria-label")).not.toContain("claude ·");
+    await show(agent({ pending_switch: { launcher: "cx", agent: "codex", model: "gpt-5.5" } }));
+    expect(pill()!.querySelector("[data-pill-target]")?.textContent).toBe("cx");
+    expect(pill()!.dataset.modelPill).toBe("pending");
+    expect(pill()!.title).toContain("gateway");
+    expect(pill()!.title).toContain("cx");
+    expect(pill()!.getAttribute("aria-label")).toContain("cx");
+    expect(pill()!.querySelector("[data-pill-engine]")?.getAttribute("data-pill-engine")).toBe("codex");
+    expect(modes()).toEqual([]);
+  });
+
   it("reloads when the default manager becomes known or the credential owner changes", async () => {
     await show(agent());
     expect(calls.filter((c) => c.url.includes("/models"))).toHaveLength(1);
