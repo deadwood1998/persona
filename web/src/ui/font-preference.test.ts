@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyFonts, FONT_FALLBACKS, FONT_KEY, FONT_PRESETS, fontPreference, normalizeFonts, quoteFont, setFontChoice, validFontFamily } from "./font-preference";
 
 const bootstrap = [...readFileSync("index.html", "utf8").matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).find((s) => s.includes('"persona.font"'))!;
+new Function(bootstrap)();
 const style = () => document.getElementById("persona-font");
 beforeEach(() => { localStorage.clear(); document.documentElement.removeAttribute("style"); applyFonts(); });
 afterEach(() => { localStorage.clear(); document.documentElement.removeAttribute("style"); applyFonts(); });
@@ -57,7 +58,7 @@ describe("browser-local font preference", () => {
       localStorage.setItem(FONT_KEY, JSON.stringify(value)); applyFonts();
       const expected = style()?.textContent ?? null;
       style()?.remove();
-      new Function(bootstrap)();
+      dispatchEvent(new StorageEvent("storage", { key: FONT_KEY }));
       expect(style()?.textContent ?? null, JSON.stringify(value)).toBe(expected);
       expect(document.querySelectorAll("#persona-font").length).toBeLessThanOrEqual(1);
     }

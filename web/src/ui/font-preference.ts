@@ -74,9 +74,6 @@ export function setFontChoice(kind: FontKind, choice: FontChoice) {
 if (typeof window !== "undefined") {
   addEventListener("storage", (event) => {
     if (event.key !== null && event.key !== FONT_KEY) return;
-    applyFonts(); listeners.forEach((l) => l());
+    listeners.forEach((l) => l());
   });
-  // Themes can arrive after first paint; retain their stack behind the explicit preference.
-  const observer = new MutationObserver(() => applyFonts());
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
 }

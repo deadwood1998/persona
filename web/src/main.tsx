@@ -3,7 +3,6 @@ import { screen } from "./screen/take";
 import { takeImportLinkOnStart } from "./lib/import-link";
 import { initI18n, startI18n } from "./i18n";
 import "./styles.css";
-import { applyFonts } from "./ui/font-preference";
 import { applyLook } from "./ui/look";
 import { logCaughtError } from "./lib/caught-error";
 
@@ -13,7 +12,6 @@ takeImportLinkOnStart();
 
 // Theme color and text size (docs/web/web.md "Theme color and text size") before anything draws.
 applyLook();
-applyFonts();
 
 // The language's catalog loads before the rest of the app: their modules call t() as they load (docs/web/web.md "Internationalization").
 // The build waits only for the first screen's part of it, as its lazy imports wait for the rest; the dev server's do not.
