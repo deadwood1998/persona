@@ -1,0 +1,15 @@
+{
+  "status": "pass",
+  "profiles": [
+    {
+      "name": "complete-1280-light-standard",
+      "feedbackMs": 3.600000023841858,
+      "errors": []
+    },
+    {
+      "name": "complete-1280-dark-standard",
+      "feedbackMs": 3.199999988079071,
+      "errors": []
+    }
+  ]
+}
