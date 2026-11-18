@@ -36,8 +36,32 @@ output = u.output + excluded.output, requests = u.requests + excluded.requests`
 
 // AddUsage stores usage that has no local record to reconstruct on reconnect.
 func (d *DB) AddUsage(ctx context.Context, machine string, buckets []proto.UsageBucket) error {
-	_, err := d.PutUsages(ctx, []UsageWrite{{Machine: machine, Buckets: buckets, Add: true}})
+	rejected, err := d.PutUsages(ctx, []UsageWrite{{Machine: machine, Buckets: buckets, Add: true}})
+	if err == nil && len(rejected) > 0 {
+		return rejected[0]
+	}
 	return err
+}
+
+// RecentRuntimeUsage restores the minute buckets the nodes cannot reconstruct.
+func (d *DB) RecentRuntimeUsage(ctx context.Context, from time.Time) (map[string][]proto.UsageBucket, error) {
+	rows, err := d.pool.Query(ctx, `SELECT machine_id, extract(epoch FROM ts)::bigint, model, launcher, agent,
+		input, cache_write, cache_read, output, requests FROM machine_usage
+		WHERE step = 60 AND ts >= $1 AND agent <> ALL($2)`, from, append(tokenuse.FileAgents(), ""))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string][]proto.UsageBucket)
+	for rows.Next() {
+		var machine string
+		var b proto.UsageBucket
+		if err := rows.Scan(&machine, &b.Minute, &b.Model, &b.Launcher, &b.Agent, &b.Input, &b.CacheWrite, &b.CacheRead, &b.Output, &b.Requests); err != nil {
+			return nil, err
+		}
+		out[machine] = append(out[machine], b)
+	}
+	return out, rows.Err()
 }
 
 // UsageWrite is one node's "usage" notification to store (PutUsage's arguments).

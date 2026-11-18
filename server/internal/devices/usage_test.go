@@ -120,6 +120,13 @@ func (s *usageMemStore) PutUsage(_ context.Context, machine string, buckets []pr
 	s.done <- struct{}{}
 	return nil
 }
+func (s *usageMemStore) AddUsage(_ context.Context, machine string, buckets []proto.UsageBucket) error {
+	s.mu.Lock()
+	s.writes = append(s.writes, usageWrite{machine: machine, buckets: buckets, add: true})
+	s.mu.Unlock()
+	s.done <- struct{}{}
+	return nil
+}
 func (s *usageMemStore) RollupUsage(context.Context, time.Time) (int64, error) { return 0, nil }
 func (s *usageMemStore) PruneUsage(context.Context, time.Time) (int64, error)  { return 0, nil }
 func (s *usageMemStore) UsageSeries(_ context.Context, machine string, from, to time.Time, step int) ([]db.UsageRow, error) {

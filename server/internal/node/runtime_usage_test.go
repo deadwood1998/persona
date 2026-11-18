@@ -20,6 +20,7 @@ func TestRuntimeUsageReport(t *testing.T) {
 	h := n.runtimes.add(nil)
 	h.ready = true
 	h.hello.Runtime = "toy"
+	h.hello.Agent = "grok"
 	n.runtimes.setSessions(h, []proto.Session{{SessionID: "s1", Agent: "grok"}, {SessionID: "s2", Agent: "grok"}})
 	host := &RuntimeHost{reg: n.runtimes, node: n}
 	report := func(id, key string) map[string]any {
@@ -29,8 +30,9 @@ func TestRuntimeUsageReport(t *testing.T) {
 	push(report("s1", "r1"))
 	push(report("s1", "r1"))
 	push(report("s2", "r1"))
+	n.flushRuntimeUsage()
 	dec := json.NewDecoder(&out)
-	for range 2 {
+	for range 1 {
 		var ev struct {
 			Event  string
 			Params struct {
@@ -46,7 +48,7 @@ func TestRuntimeUsageReport(t *testing.T) {
 			t.Fatalf("event %+v", ev)
 		}
 		b := ev.Params.Buckets[0]
-		if b.Agent != "grok" || b.Input != 10 || b.Output != 20 || b.CacheRead != 30 || b.CacheWrite != 40 || b.Requests != 1 {
+		if b.Agent != "grok" || b.Input != 20 || b.Output != 40 || b.CacheRead != 60 || b.CacheWrite != 80 || b.Requests != 2 {
 			t.Fatalf("bucket %+v", b)
 		}
 	}
@@ -55,10 +57,15 @@ func TestRuntimeUsageReport(t *testing.T) {
 	}
 	out.Reset()
 	for _, agent := range tokenuse.FileAgents() {
+		h.hello.Agent = agent
 		n.runtimes.setSessions(h, []proto.Session{{SessionID: "s1", Agent: agent}})
 		push(report("s1", agent))
 	}
+	h.hello.Agent = "grok"
+	n.runtimes.setSessions(h, []proto.Session{{SessionID: "s1", Agent: "unregistered"}})
+	push(report("s1", "unregistered"))
 	n.runtimes.setSessions(h, []proto.Session{{SessionID: "s1", Agent: "grok"}})
+	push(report("s2", "removed"))
 	push(report("someone-elses", "foreign"))
 	for _, change := range []func(map[string]any){func(p map[string]any) { p["input"] = -1 }, func(p map[string]any) { p["input"] = 1.5 }, func(p map[string]any) { p["input"] = int64(1 << 53) }, func(p map[string]any) { p["reasoning"] = 21 }, func(p map[string]any) { p["ts"] = time.Now().Add(-27 * time.Hour).Format(time.RFC3339) }, func(p map[string]any) { p["ts"] = time.Now().Add(time.Hour).Format(time.RFC3339) }, func(p map[string]any) { p["model"] = "" }} {
 		p := report("s1", "invalid")
@@ -68,13 +75,26 @@ func TestRuntimeUsageReport(t *testing.T) {
 	h.ready = false
 	push(report("s1", "before-hello"))
 	h.ready = true
+	n.flushRuntimeUsage()
 	if out.Len() != 0 {
 		t.Fatalf("inadmissible usage: %s", out.String())
 	}
 	push(report("s1", ""))
 	push(report("s1", ""))
-	if bytes.Count(out.Bytes(), []byte(`"event":"usage"`)) != 2 {
+	n.flushRuntimeUsage()
+	if bytes.Count(out.Bytes(), []byte(`"event":"usage"`)) != 1 || !bytes.Contains(out.Bytes(), []byte(`"req":2`)) {
 		t.Fatalf("reports without request ids: %s", out.String())
+	}
+	out.Reset()
+	reconnected := n.runtimes.add(nil)
+	reconnected.ready = true
+	reconnected.hello = h.hello
+	n.runtimes.setSessions(reconnected, []proto.Session{{SessionID: "s1", Agent: "grok"}})
+	body, _ := json.Marshal(report("s1", "r1"))
+	host.event(reconnected, "usage.report", body)
+	n.flushRuntimeUsage()
+	if !bytes.Contains(out.Bytes(), []byte(`"req":1`)) {
+		t.Fatalf("request ID was retired across runtime connections: %s", out.String())
 	}
 }
 

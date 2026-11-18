@@ -27,6 +27,27 @@ func (s *runtimeUsageBatchStore) PutUsages(_ context.Context, w []db.UsageWrite)
 	return nil, nil
 }
 
+func TestRuntimeUsageCrossesProcessingMinute(t *testing.T) {
+	store := &runtimeUsageStore{usageMemStore: &usageMemStore{memStore: newMemStore(), done: make(chan struct{}, 2)}}
+	d := New(Options{Hub: &fakeHost{}, Store: store})
+	now := time.Now().Truncate(time.Minute)
+	bucket := proto.UsageBucket{Minute: now.Add(-usageNodeWindow).Unix(), Model: "m", Agent: "grok", Output: 5, Requests: 1}
+	data, err := json.Marshal(map[string]any{"add": true, "buckets": []proto.UsageBucket{bucket}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.onUsage("box", data, now.Add(55*time.Second))
+	d.onUsage("box", data, now.Add(time.Minute))
+	d.saveUsage(context.Background(), store, []usageWrite{<-d.usageWrites, <-d.usageWrites})
+	live := d.usage.buckets("box")
+	if len(live) != 1 || live[0].Output != 10 || live[0].Requests != 2 {
+		t.Fatalf("live boundary totals: %+v", live)
+	}
+	if len(store.saved) != 2 || store.saved[0].Buckets[0] != bucket || store.saved[1].Buckets[0] != bucket {
+		t.Fatalf("stored boundary writes: %+v", store.saved)
+	}
+}
+
 func TestRuntimeUsageAddSurvivesFull(t *testing.T) {
 	now := time.Now().Truncate(time.Minute)
 	for _, batch := range []bool{false, true} {

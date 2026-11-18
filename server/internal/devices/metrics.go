@@ -506,8 +506,22 @@ func (u *usageBook) apply(machine string, params json.RawMessage, now time.Time)
 			}
 		}
 	}
+	// Node batches were admitted against their processing minute. Retain the
+	// incoming delta even if this manager crossed a minute while it was in flight.
+	cutoff := now.Add(-usageNodeWindow).Truncate(time.Minute).Unix()
+	if p.Add {
+		cutoff -= int64(time.Minute / time.Second)
+	}
+	for k := range m.buckets {
+		if k.minute < cutoff {
+			delete(m.buckets, k)
+		}
+	}
 	for _, b := range p.Buckets {
 		k := usageKey{b.Minute, b.Model, b.Launcher, b.Agent}
+		if b.Minute < cutoff && !p.Add {
+			continue
+		}
 		if p.Add {
 			old := m.buckets[k]
 			b.Input += old.Input
@@ -520,12 +534,6 @@ func (u *usageBook) apply(machine string, params json.RawMessage, now time.Time)
 	}
 	if !p.Add {
 		m.load, m.cpus, m.at, m.launchers = p.Load, p.CPUs, now, p.Launchers
-	}
-	cutoff := now.Add(-26*time.Hour).Unix() / 60 * 60
-	for k := range m.buckets {
-		if k.minute < cutoff {
-			delete(m.buckets, k)
-		}
 	}
 	return true
 }

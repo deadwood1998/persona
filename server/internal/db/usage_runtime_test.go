@@ -56,6 +56,13 @@ func TestRuntimeUsageAddAndFull(t *testing.T) {
 	if err := d.AddUsage(ctx, "m1", []proto.UsageBucket{b("grok", 4)}); err != nil {
 		t.Fatal(err)
 	}
+	recent, err := d.RecentRuntimeUsage(ctx, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent["m1"]) != 1 || recent["m1"][0].Agent != "grok" || recent["m1"][0].Output != 14 {
+		t.Fatalf("runtime restart snapshot: %+v", recent)
+	}
 	if _, err := d.RollupUsage(ctx, now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}

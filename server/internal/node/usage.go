@@ -135,6 +135,7 @@ func (n *Node) meterUsage(ctx context.Context, stateLoaded <-chan struct{}) {
 			}
 		}
 		m.prune(cutoff)
+		n.flushRuntimeUsage()
 		if n.peer != nil {
 			if params, ok := m.report(now); ok {
 				params["load"], params["cpus"] = loadAverage(), runtime.NumCPU()

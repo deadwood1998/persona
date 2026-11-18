@@ -10,7 +10,7 @@ const node = await startNode({ personad: process.env.PERSONAD })
 const rt = createRuntime({
   listSessions: async () => [{ session_id: 'usage-own', agent: 'grok', status: 'idle' }, { session_id: 'usage-file', agent: 'claude', status: 'idle' }],
   items: async () => ({ items: [], to_seq: 0 }),
-}, { runtime: 'usage-toy', socketPath: node.runtimeSocket, refreshMs: 0 })
+}, { runtime: 'usage-toy', agent: 'grok', socketPath: node.runtimeSocket, refreshMs: 0 })
 try {
   rt.start()
   await until('owned session at the hub', () => node.sessions().some(s => s.session_id === 'usage-own'))
@@ -23,13 +23,12 @@ try {
   rt.usage({ ...p, request_id: 'barrier' })
   const events = await until('two admitted requests', () => {
     const a = node.events.filter(e => e.event === 'usage' && e.params.add)
-    return a.length >= 2 ? a : undefined
-  })
-  assert.equal(events.length, 2)
-  for (const { params } of events) {
-    assert.equal(params.full, undefined)
-    assert.deepEqual(params.buckets, [{ minute: Math.floor(Date.parse(p.ts) / 60000) * 60, model: 'toy-model', agent: 'grok', in: 10, out: 20, cache_read: 30, cache_write: 40, req: 1 }])
-  }
+    return a.length ? a : undefined
+  }, 15_000)
+  assert.equal(events.length, 1)
+  const { params } = events[0]
+  assert.equal(params.full, undefined)
+  assert.deepEqual(params.buckets, [{ minute: Math.floor(Date.parse(p.ts) / 60000) * 60, model: 'toy-model', agent: 'grok', in: 20, out: 40, cache_read: 60, cache_write: 80, req: 2 }])
   console.log('PASS runtime usage: real SDK/node transport, owned agent attribution, dedupe, file-agent exclusion and foreign-session refusal')
 } finally {
   rt.stop()
@@ -42,7 +41,7 @@ try {
   daemon = createRuntime({
     listSessions: async () => [{ session_id: 'own', agent: 'grok', status: 'idle' }, { session_id: 'file', agent: 'claude', status: 'idle' }],
     items: async () => ({ items: [], to_seq: 0 }),
-  }, { runtime: 'usage-daemon', listen: { port: 0, token: 'synthetic-test-token' }, refreshMs: 0 })
+  }, { runtime: 'usage-daemon', agent: 'grok', listen: { port: 0, token: 'synthetic-test-token' }, refreshMs: 0 })
   const address = await daemon.start()
   const home = join(root, 'home')
   mkdirSync(join(home, '.persona'), { recursive: true })
@@ -58,10 +57,10 @@ try {
   daemon.usage({ ...p, request_id: 'r2' })
   const events = await until('daemon usage at the hub', () => {
     const a = remoteNode.events.filter(e => e.event === 'usage' && e.params.add)
-    return a.length >= 2 ? a : undefined
-  })
-  assert.equal(events.length, 2)
-  assert.ok(events.every(e => e.params.buckets.length === 1 && e.params.buckets[0].agent === 'grok' && e.params.buckets[0].out === 12))
+    return a.length ? a : undefined
+  }, 15_000)
+  assert.equal(events.length, 1)
+  assert.deepEqual(events[0].params.buckets, [{ minute: Math.floor(Date.parse(p.ts) / 60000) * 60, model: 'toy-model', agent: 'grok', out: 24, req: 2 }])
   console.log('PASS daemon runtime usage: real WebSocket link, namespaced ownership, file-agent exclusion and dedupe')
 } finally {
   daemon?.stop()
