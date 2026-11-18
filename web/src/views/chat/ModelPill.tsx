@@ -18,9 +18,10 @@ import { modelSupportsFast } from "../../lib/launcher-models";
 import { effortTitle } from "../../lib/session-actions";
 import { dropPick, launcherOffered, pickFast, usePickedEffort, usePickedFast, usePickedLauncher, usePickedModel } from "../../lib/assistant-chat";
 import { isBackgroundSupervisor } from "../../lib/background-supervisor";
+import { launcherTitle } from "../../lib/provider-names";
 import { ASSISTANT_MODEL_PICK_FEATURE, ASSISTANT_START_SERVICE_TIER_FEATURE, assistantPickKey, assistantPillView, assistantSetup, type AssistantChat } from "../../lib/assistant-models";
 import {
-  agentCatalogScope, assistantCatalogScope, assistantLaunchers, modelList, pendingView, pillView, readAssistantLaunchers, readForPanel, readModels, readSuperviseDefault, sessionSwitches, superviseDefault, useModelLists, currentModelRow, type PillSetup,
+  agentCatalogScope, assistantCatalogScope, assistantLaunchers, machineLauncherList, modelList, pendingView, pillView, readAgentLauncherNames, readAssistantLaunchers, readForPanel, readModels, readSuperviseDefault, sessionSwitches, superviseDefault, useModelLists, currentModelRow, type PillSetup,
 } from "../../lib/session-models";
 import { turnErrorFix, type TurnFix } from "../../lib/readiness";
 import { getSession, hubHas, useStore } from "../../lib/store";
@@ -90,7 +91,7 @@ export function ModelPill({
   const unknown = !shown.model;
   const name = shown.model ?? (loading ? t("chat-modelpill.loading") : failed ? t("chat-modelpill.failed") : t("chat-modelpill.default_model"));
   const describe = (x: PillSetup) =>
-    [agentName(x.engine, x.engineLabel), x.model ?? name, x.provider, x.effort && effortTitle(x.effort), x.fast && t("chat-sessiondialogs.speed_fast")].filter(Boolean).join(" · ");
+    [agentName(x.engine, x.engineLabel), x.model ?? name, x.launcherName || x.provider, x.effort && effortTitle(x.effort), x.fast && t("chat-sessiondialogs.speed_fast")].filter(Boolean).join(" · ");
   const title = pending
     ? t("chat-modelpill.current_and_next", { current: describe(current), next: describe(pending) })
     : [describe(current), failed && !unknown ? t("chat-modelpill.failed") : ""].filter(Boolean).join(" · ");
@@ -113,17 +114,17 @@ export function ModelPill({
       <ProviderMark name={shown.provider} className={cx("mr-1.5", failed && !unknown ? "text-red" : "text-ink-2")} />
       {(launcher || pending) && (
         <>
-          <span data-pill-target title={target} className={cx("max-w-[96px] shrink-0 truncate text-ink-3", !launcher && "@max-[600px]/composer:hidden")}>{target}</span>
+          <span data-pill-target title={target} className={cx("max-w-[96px] truncate text-ink-3", launcher ? "min-w-[3ch] shrink" : "shrink-0 @max-[600px]/composer:hidden")}>{target}</span>
           <span aria-hidden className={cx("shrink-0 text-ink-3", !launcher && "@max-[600px]/composer:hidden")}>·</span>
         </>
       )}
       {/* the name gives way first (a far larger shrink than the effort's): narrow, the effort truncates only once the
           name has no room left */}
-      <span title={name} className={cx("min-w-0 truncate text-ink @max-[600px]/composer:max-w-[108px]", !launcher && "shrink-[1000]", short !== name && "@max-[600px]/composer:hidden", !launcher && ULTRA_HIDDEN)}>{name}</span>
+      <span title={name} className={cx("shrink-[1000] truncate text-ink @max-[600px]/composer:max-w-[108px]", launcher ? "min-w-[3ch]" : "min-w-0", short !== name && "@max-[600px]/composer:hidden", !launcher && ULTRA_HIDDEN)}>{name}</span>
       {/* narrow, the name without its bracketed qualifier, a context size kept short (the tooltip keeps all of it): the
           108 px would cut it there */}
       {short !== name && (
-        <span title={name} data-pill-short className={cx("hidden min-w-0 truncate text-ink @max-[600px]/composer:block @max-[600px]/composer:max-w-[108px]", !launcher && "shrink-[1000]", !launcher && ULTRA_HIDDEN)}>{short}</span>
+        <span title={name} data-pill-short className={cx("hidden shrink-[1000] truncate text-ink @max-[600px]/composer:block @max-[600px]/composer:max-w-[108px]", launcher ? "min-w-[3ch]" : "min-w-0", !launcher && ULTRA_HIDDEN)}>{short}</span>
       )}
       {/* the engine's mark is the separator before the effort: no "·" */}
       <span aria-hidden data-pill-engine={shown.engine} className={cx("ml-1 flex shrink-0 items-center @max-[520px]/composer:scale-[0.917]", !launcher && ULTRA_HIDDEN)}>
@@ -219,15 +220,20 @@ export const AgentModelPill = memo(function AgentModelPill({ session }: { sessio
   useEffect(() => {
     if (target && target !== own) void readModels(mid, target);
   }, [target, own, mid, scope]);
+  const namesLauncher = Boolean((opens || view.model) && (session.launcher || target));
+  useEffect(() => {
+    if (namesLauncher) void readAgentLauncherNames(mid);
+  }, [namesLauncher, mid, scope]);
 
+  const launchers = machineLauncherList(mid);
   const waiting = pendingView(session, (name) => modelList(mid, name));
-  const pending = waiting ? { ...waiting, launcherName: waiting.provider } : null;
+  const pending = waiting ? { ...waiting, launcherName: launcherTitle(waiting.provider, launchers) } : null;
   if (!opens && !view.model) return null;
   const workflow = ultracodeOn(session) ? {} : view.engine === "codex" && session.effort === CODEX_ULTRA ? { label: t("ultracode.codex_ultra_title"), title: t("ultracode.codex_ultra_title") } : undefined;
   return (
     <>
       <ModelPill
-        current={{ ...view, launcherName: session.launcher || undefined }}
+        current={{ ...view, launcherName: session.launcher ? launcherTitle(session.launcher, launchers) : undefined }}
         pending={pending}
         loading={view.loading}
         failed={view.failed}

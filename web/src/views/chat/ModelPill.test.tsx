@@ -209,6 +209,7 @@ let quotaAnswer: () => Response;
 // lists answer once this settles (a test that wants to see what shows while one is read holds it)
 let hold: Promise<unknown>;
 let machine = 0;
+let namedLauncher = false;
 
 const agent = (x: Partial<Session> = {}): Session =>
   ({ machine_id: `mac-${machine}`, session_id: "s1", title: "整理发布说明", cwd: "/code", status: "idle", state: "idle", agent: "claude", launcher: "gateway", model: "claude-opus-5-5", effort: "high", pane_id: "p1", ...x }) as Session;
@@ -216,6 +217,7 @@ const agent = (x: Partial<Session> = {}): Session =>
 beforeEach(() => {
   resetManagerChoice();
   machine++;
+  namedLauncher = false;
   panel.props = null;
   toast.mockClear();
   Object.assign(getState(), { features: [], sessions: {} });
@@ -232,7 +234,10 @@ beforeEach(() => {
     if (url.includes("/models/custom")) return forgetAnswer();
     if (url.includes("/quota")) return quotaAnswer();
     if (url.includes("/models")) return hold.then(() => listAnswer(url));
-    if (/\/launchers(\?|$)/.test(url)) return json({ launchers: [{ name: "claude" }, { name: "gateway" }, { name: "cx", agent: "codex" }] });
+    if (/\/launchers(\?|$)/.test(url)) return json({ launchers: [
+      { name: "claude" }, { name: "gateway" }, { name: "cx", agent: "codex" },
+      ...(namedLauncher ? [{ name: "team-relay", display_name: "Team Relay" }] : []),
+    ] });
     if (url.endsWith("/modes")) return modesAnswer(body);
     return json({});
   }));
@@ -275,6 +280,19 @@ describe("an Agent's pill", () => {
     expect(pill()!.textContent).toContain("Opus 5.5");
     expect(pill()!.querySelector("[data-pill-effort]")?.textContent).toBe("高");
     expect(modes()).toEqual([]);
+  });
+
+  it("uses the launcher's display name in the pill, tooltip and panel", async () => {
+    namedLauncher = true;
+    await show(agent({ launcher: "team-relay" }));
+    expect(pill()!.querySelector("[data-pill-target]")?.textContent).toBe("Team Relay");
+    expect(pill()!.title).toContain("Team Relay");
+    expect(pill()!.getAttribute("aria-label")).toContain("Team Relay");
+    await open();
+    expect(provider("team-relay").name).toBe("Team Relay");
+    await show(agent({ launcher: "team-relay", pending_switch: { launcher: "gateway", model: "haiku" } }));
+    expect(pill()!.title).toContain("Team Relay");
+    expect(pill()!.querySelector("[data-pill-target]")?.textContent).toBe("gateway");
   });
 
   it("keeps a model-only label when the launcher is unknown, but names a queued target", async () => {
@@ -465,7 +483,7 @@ describe("an Agent's pill", () => {
     await show(agent({ status: "offline", state: "offline" }));
     expect(pill()).toBeNull();
     expect(host.querySelector('[data-model-pill="label"]')!.textContent).toContain("opus 5.5");
-    expect(calls).toEqual([]); // nothing to open, nothing read
+    expect(calls.map((c) => c.url)).toEqual([expect.stringContaining("/launchers?")]); // a label needs only the launcher's title
     await show(agent({ status: "offline", state: "offline", model: undefined }));
     expect(host.innerHTML).toBe("");
   });

@@ -214,6 +214,11 @@ function readLaunchers(mid: string): Promise<void> {
   return read;
 }
 
+/** Reuse this computer's catalog for the pill's launcher titles. Opening the panel refreshes it. */
+export function readAgentLauncherNames(mid: string): Promise<void> {
+  return machineLauncherList(mid) ? Promise.resolve() : readLaunchers(mid);
+}
+
 /** An opening of the panel on computer `mid` for a session of launcher `own`: every list read again behind the one shown,
  *  the session's own first. */
 export function readForPanel(mid: string, own: string): void {
