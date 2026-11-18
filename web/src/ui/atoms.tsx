@@ -111,6 +111,7 @@ export function IconButton({
   icon,
   label,
   onClick,
+  onKeyDown,
   active,
   size = 28,
   className = "",
@@ -120,6 +121,7 @@ export function IconButton({
   icon: IconName;
   label: string;
   onClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  onKeyDown?: React.KeyboardEventHandler<HTMLButtonElement>;
   active?: boolean;
   size?: number;
   className?: string;
@@ -133,6 +135,7 @@ export function IconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
+      onKeyDown={onKeyDown}
       className={cx(
         "touch-hit flex shrink-0 items-center justify-center rounded-[8px] transition-[background-color,color,transform] duration-150 enabled:active:scale-[0.94] disabled:opacity-40",
         active ? "bg-hover text-ink" : "text-ink-3 enabled:hover:bg-hover enabled:hover:text-ink",

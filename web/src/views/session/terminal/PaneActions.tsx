@@ -42,10 +42,17 @@ export function PaneActions({ mid, sid, fullSupported, onSplit }: { mid: string;
 
   return <>
     {splits.map((it, i) => <IconButton key={it.key} icon={i === 0 ? "sidebar" : "layers"} label={it.label} disabled={busy} onClick={() => void Promise.resolve(it.onSelect()).catch((e) => toast(errorText(e), "error"))} />)}
-    {more.length > 0 && <IconButton icon="more" label={t("session-terminalpanel.pane_actions")} active={Boolean(anchor)} disabled={busy} onClick={(e) => {
-      e.currentTarget.focus();
-      setAnchor(anchor ? null : e.currentTarget);
-    }} />}
+    {more.length > 0 && <IconButton icon="more" label={t("session-terminalpanel.pane_actions")} active={Boolean(anchor)} disabled={busy}
+      onClick={(e) => {
+        e.currentTarget.focus();
+        setAnchor(anchor ? null : e.currentTarget);
+      }}
+      onKeyDown={(e) => {
+        if (anchor || !["Enter", " ", "ArrowDown"].includes(e.key)) return;
+        e.preventDefault();
+        e.currentTarget.focus();
+        setAnchor(e.currentTarget);
+      }} />}
     {anchor && <Menu anchor={anchor} align="right" focusScoped onClose={() => setAnchor(null)} items={[
       ...(splits.length && split ? [{ ...split, divider: false, disabled: busy, children: splits }] : []),
       ...more,

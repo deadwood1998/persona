@@ -46,7 +46,9 @@ try {
         await page.waitForFunction(() => [...document.querySelectorAll(".xterm-rows")].some((e) => e.textContent.includes("git status")));
     assert.equal(await single.getAttribute("aria-checked"), "true");
     await page.screenshot({ path: join(shots, `${tag}-toolbar.png`) });
-    await toolbar.getByRole("button", { name: "Pane actions", exact: true }).click();
+    const actions = toolbar.getByRole("button", { name: "Pane actions", exact: true });
+    await actions.focus();
+    await page.keyboard.press("Enter");
     await page.getByRole("menuitem", { name: /Close this pane/ }).waitFor();
     await page.locator("[data-menu]").evaluateAll(async (els) => Promise.all(els.flatMap((el) => el.getAnimations()).map((a) => a.finished)));
     await page.screenshot({ path: join(shots, `${tag}-menu.png`) });

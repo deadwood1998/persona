@@ -54,6 +54,16 @@ it("reuses the Agent close dialog through a raw pane address", async () => {
   fake.closeAgent = { onSelect: fake.close }; render("pane:w1:p1"); open();
   await clickRow(t("session-terminalpanel.close_this_pane")); expect(fake.close).toHaveBeenCalledOnce(); expect(fake.post).not.toHaveBeenCalled();
 });
+it.each(["Enter", " ", "ArrowDown"])("opens the toolbar menu with %j and restores focus on Escape", (activationKey) => {
+  render();
+  const trigger = button(t("session-terminalpanel.pane_actions"));
+  trigger.focus();
+  key(trigger, activationKey);
+  expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  key(trigger, "Escape");
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+});
 it("takes N, I and Backspace only while the toolbar menu owns focus", async () => {
   render(); open(); const field = document.body.appendChild(document.createElement("input")); field.focus();
   for (const k of ["n", "i", "Backspace"]) key(field, k);
