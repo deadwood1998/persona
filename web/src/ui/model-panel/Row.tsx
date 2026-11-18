@@ -41,6 +41,10 @@ interface RowProps {
   /** The second line ("" for none) and whether it is the model's description (capped at about 30 characters). */
   second: string;
   describes?: boolean;
+  /** Search and saved setups always name their launcher, including touch and truncated names. */
+  keepSecond?: boolean;
+  /** A mixed disclosure list uses buttons rather than listbox options. */
+  asButton?: boolean;
   /** Why it can't be picked (its tooltip); undefined while it can. */
   blocked?: { reason: string };
   customizable: boolean;
@@ -59,9 +63,9 @@ interface RowProps {
   onForget?: () => void;
 }
 
-export function Row({ row, second, describes, blocked, customizable, flyoutOpen, starred, starRemoves, frozen, onPick, onStar, onCustomize, onCustomizeKey, onForget }: RowProps) {
+export function Row({ row, second, describes, keepSecond, asButton, blocked, customizable, flyoutOpen, starred, starRemoves, frozen, onPick, onStar, onCustomize, onCustomizeKey, onForget }: RowProps) {
   const { model, provider } = row;
-  const name = row.kind === "typed" ? t("ui-modelpanel.use_typed", { id: model.id }) : row.preset ? row.preset.name : model.name;
+  const name = row.kind === "typed" ? t("ui-modelpanel.use_typed", { id: model.id }) : row.preset ? row.preset.name : row.kind === "favorite" || row.kind === "recent" ? `${provider.name} · ${model.name}` : model.name;
   // a typed ID's "Use “…”" and a preset (a setup of the profile's, not a copy of one's own) have no star
   const stars = row.kind !== "typed" && row.kind !== "preset";
   const effort = shownEffort(row.setup, model);
@@ -107,8 +111,9 @@ export function Row({ row, second, describes, blocked, customizable, flyoutOpen,
   };
   return (
     <div
-      role="option"
-      aria-selected={row.current}
+      role={asButton ? "button" : "option"}
+      aria-selected={asButton ? undefined : row.current}
+      aria-pressed={asButton ? row.current : undefined}
       aria-disabled={ariaOff || undefined}
       aria-keyshortcuts={customizable ? "ArrowLeft" : undefined}
       tabIndex={ariaOff ? -1 : 0}
@@ -182,8 +187,8 @@ export function Row({ row, second, describes, blocked, customizable, flyoutOpen,
           </span>
         </span>
       </div>
-      {second && idLine !== "always" && (
-        <div title={second} className={cx("min-w-0 truncate pt-px pl-[26px] text-[12px] leading-[1.4] text-ink-2", describes && "max-w-[30ch]", idLine === "touch" && "[@media(hover:none)]:hidden")}>
+      {second && (keepSecond || idLine !== "always") && (
+        <div title={second} className={cx("min-w-0 truncate pt-px pl-[26px] text-[12px] leading-[1.4] text-ink-2", describes && "max-w-[30ch]", !keepSecond && idLine === "touch" && "[@media(hover:none)]:hidden")}>
           {second}
         </div>
       )}

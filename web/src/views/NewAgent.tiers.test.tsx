@@ -90,6 +90,9 @@ async function open() {
 async function openPanel() {
   act(() => pill().click());
   await flush();
+  // These caller tests inspect model actions; disclose the catalog first.
+  for (const header of document.body.querySelectorAll<HTMLButtonElement>('[data-panel-launcher][aria-expanded="false"]')) act(() => header.click());
+  await flush();
 }
 
 /** Opens the panel and picks a row by its key; the panel closes once the form took it. */
@@ -114,8 +117,8 @@ describe("New agent: presets (#2225)", () => {
     expect(hint()?.textContent).toBe("预设 review · 代码审查和设计");
     // the model it runs is lit in its launcher's group (a preset row itself never is)
     await openPanel();
-    expect(row("model:fast\nm-review")!.getAttribute("aria-selected")).toBe("true");
-    expect(preset("review")!.getAttribute("aria-selected")).toBe("false");
+    expect(row("model:fast\nm-review")!.getAttribute("aria-pressed")).toBe("true");
+    expect(preset("review")!.getAttribute("aria-pressed")).toBe("false");
     act(() => pill().click());
     act(() => button("启动").click());
     expect(launched[0]).toMatchObject({ machineId: "mac", launcher: "fast", model: "m-review", effort: "high" });
@@ -183,7 +186,7 @@ describe("New agent: presets (#2225)", () => {
     await pick("preset:review");
     expect(hint()?.textContent).toBe("预设 review · 代码审查和设计");
     await openPanel();
-    expect(document.body.querySelector("[data-follow-row]")!.getAttribute("aria-selected")).toBe("false");
+    expect(document.body.querySelector("[data-follow-row]")!.getAttribute("aria-pressed")).toBe("false");
     act(() => document.body.querySelector<HTMLElement>("[data-follow-row]")!.click());
     await flush();
     expect(hint()).toBeNull();
