@@ -79,17 +79,18 @@ try {
       const start = performance.now();
       const response = page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/panes/split") && r.status() === 200);
       await split.click();
-      await response;
+      const received = await response;
+      await received.finished();
+      const timing = received.request().timing();
       await page.waitForFunction(() => [...document.querySelectorAll('[role="radio"]')].some((e) => e.ariaLabel === "Full view" && e.getAttribute("aria-checked") === "true"));
       await page.waitForFunction(() => [...document.querySelectorAll('[data-surface="shown"] .xterm-rows')].some((e) => e.textContent.includes("1 main")));
-      feedback.push({ direction, clickToRenderedFullMs: +(performance.now() - start).toFixed(1) });
+      feedback.push({ direction, clickToRenderedFullMs: +(performance.now() - start).toFixed(1), requestStartToResponseEndMs: +(timing.responseEnd - timing.requestStart).toFixed(1) });
     }
     await page.screenshot({ path: join(shots, `${tag}-full.png`) });
     const geometry = await toolbar.evaluate((el) => ({ width: el.clientWidth, scroll: el.scrollWidth, right: el.getBoundingClientRect().right }));
     assert.ok(geometry.scroll <= geometry.width + 1 && geometry.right <= width + 1, JSON.stringify(geometry));
     assert.deepEqual(posts.slice(-2).map((p) => p.body), [{ pane: "w1:p2", direction: "right" }, { pane: "w1:p2", direction: "down" }]);
     const localFeedback = await page.evaluate(() => window.__paneFeedback);
-    const network = await page.evaluate(() => performance.getEntriesByType("resource").filter((e) => e.name.endsWith("/panes/split")).map((e) => ({ durationMs: +e.duration.toFixed(1) })));
     // The session-browser row uses the same menu as the sidebar and must have no pane controls.
     await page.goto(`${base}/terminal`);
     const row = page.locator('main a[href^="/s/"]').first();
@@ -100,7 +101,7 @@ try {
     await page.locator("[data-menu]").evaluateAll(async (els) => Promise.all(els.flatMap((el) => el.getAnimations()).map((a) => a.finished)));
     await page.screenshot({ path: join(shots, `${tag}-session-menu.png`) });
     assert.deepEqual(errors, []);
-    results.push({ tag, geometry, feedback, localFeedback, network, checks: "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow" });
+    results.push({ tag, geometry, feedback, localFeedback, checks: "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow" });
     console.log(`PASS ${tag}`);
     await context.close();
   }

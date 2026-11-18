@@ -399,10 +399,7 @@ export async function brotliCopies(dir: string, files: string[]): Promise<{ file
 // (main 6fc9e85a00~1: ja 482,373 B; 6fc9e85a00: ja 482,643 B, en 479,549 B, zh-Hans 480,379 B), 117 B over the budget,
 // so main stopped building. The budget is main's ja size plus 40 B; taking those bytes back off the first screen is
 // separate work.
-// 2026-11-18 (#10239): focus-scoped terminal menu keys and session-only menu nodes add 186 B to
-// main 70bd6f33d (en 479,382 / ja 482,516 / zh-Hans 480,192 B). Use its 167 B of room;
-// allow only the remaining 19 B. Terminal controls and their copy stay in the lazy terminal chunk.
-export const FIRST_SCREEN_BUDGET = 482_702;
+export const FIRST_SCREEN_BUDGET = 482_683;
 // The hash in a built file's name: the 8 characters of Rollup's [hash] (url-safe base64) between "-" and the
 // extension, as vite.config.ts names every chunk and asset ("assets/[name]-[hash].js", "[name]-[hash][extname]").
 const NAME_HASH = /-([A-Za-z0-9_-]{8})\.[^./]+$/;
