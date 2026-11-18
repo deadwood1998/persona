@@ -80,14 +80,15 @@ func (l *link) getEndpoints() []Endpoint {
 }
 
 func dial(ctx context.Context, c *Config) (*link, error) {
-	l, ep, err := race(ctx, c.Endpoints, func(ctx context.Context, ep Endpoint) (*link, error) {
+	candidates := ranked(c.Endpoints)
+	l, ep, err := race(ctx, candidates, func(ctx context.Context, ep Endpoint) (*link, error) {
 		var local netip.Addr
 		client := hubClient(c, func(raw net.Conn) {
 			if a, err := netip.ParseAddrPort(raw.LocalAddr().String()); err == nil {
 				local = a.Addr().Unmap()
 			}
 		})
-		conn, resp, err := websocket.Dial(ctx, wsURL(ep.URL, Path), &websocket.DialOptions{HTTPClient: client, HTTPHeader: bearer(c.Token)})
+		conn, resp, err := diagnosticDial(ctx, wsURL(ep.URL, Path), &websocket.DialOptions{HTTPClient: client, HTTPHeader: bearer(c.Token)}, "control", ep.Kind, slices.Index(candidates, ep)+1)
 		if err != nil {
 			return nil, handshakeError(resp, err)
 		}
@@ -594,8 +595,8 @@ func (l *link) forward(ctx context.Context, id, target string) error {
 	defer node.Close()
 	dctx, dcancel := context.WithTimeout(ctx, dialTimeout) // the handshake only: the stream lives as long as the link
 	defer dcancel()
-	ws, resp, err := websocket.Dial(dctx, wsURL(cmp.Or(l.baseURL, l.ep.URL), StreamPath+"?id="+id), &websocket.DialOptions{
-		HTTPClient: l.streams, HTTPHeader: bearer(l.token), CompressionMode: StreamCompression})
+	ws, resp, err := diagnosticDial(dctx, wsURL(cmp.Or(l.baseURL, l.ep.URL), StreamPath+"?id="+id), &websocket.DialOptions{
+		HTTPClient: l.streams, HTTPHeader: bearer(l.token), CompressionMode: StreamCompression}, "stream", l.ep.Kind, 1)
 	if err != nil {
 		return newTextError("link-errors.stream_open_failed", handshakeError(resp, err))
 	}

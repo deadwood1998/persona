@@ -50,7 +50,7 @@ func pinned(fp string, onConn func(net.Conn)) *http.Client {
 				}
 				host, _, _ := net.SplitHostPort(addr)
 				c := tls.Client(raw, pinnedTLSConfig(fp, host))
-				if err := c.HandshakeContext(ctx); err != nil {
+				if err := tracedHandshake(ctx, c); err != nil {
 					raw.Close()
 					return nil, err
 				}
@@ -93,7 +93,7 @@ func systemTrusted(onConn func(net.Conn)) *http.Client {
 				host, _, _ := net.SplitHostPort(addr)
 				c := tls.Client(raw, &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"},
 					ServerName: host, RootCAs: systemRoots.Load()})
-				if err := c.HandshakeContext(ctx); err != nil {
+				if err := tracedHandshake(ctx, c); err != nil {
 					raw.Close()
 					return nil, err
 				}

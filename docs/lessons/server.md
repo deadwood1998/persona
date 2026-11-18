@@ -2688,3 +2688,15 @@ nothing ran the old build after the new one.
 - Lesson: a 409 the client swallows hides a broken ownership model until something else (here a cleanup) depends on
   it. When a fence refuses a live, authenticated client, either let it prove the move or tell it plainly what to do;
   and check what a "looks unused" revocation still owns before treating it as cleanup.
+
+
+## Trace custom TLS boundaries explicitly (#10533)
+
+An `http.Transport` with `DialTLSContext` can emit TLS callbacks only after the custom
+function has already completed its real handshake. Invoke the context's TLS start/done
+hooks around the unchanged `HandshakeContext`, including tunnel transports, and retain
+that first measurement when the transport announces the completed handshake again.
+Otherwise a TLS stall is indistinguishable from a TCP failure. DNS and connect hooks can run concurrently
+or finish after cancellation, so synchronize snapshots and distinguish overlapping connects.
+Keep diagnostic output to finite categories and durations: never format trace payloads or
+wrapped network errors, which carry addresses, stream query parameters and certificate data.
