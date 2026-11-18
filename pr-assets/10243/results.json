@@ -1,0 +1,465 @@
+[
+  {
+    "terminals": {
+      "one": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "two": "\"PersonaTermCJK\", Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "retained": "\"PersonaTermCJK\", Consolas, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "reopened": "\"PersonaTermCJK\", Consolas, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace",
+      "oneSize": 13,
+      "twoSize": 13,
+      "retainedSize": 13
+    }
+  },
+  {
+    "tag": "1280-light-standard",
+    "sample": {
+      "sans": "Georgia, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace"
+    },
+    "paint": {
+      "first": {
+        "time": 27.200000017881393,
+        "css": ":root { --font-sans: \"Arial\", Inter, -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif !important; --font-mono: \"Menlo\", \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace !important; --font-inline-code: var(--font-mono); }",
+        "rootChildren": 0
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "time": 28
+        },
+        {
+          "name": "first-contentful-paint",
+          "time": 376
+        }
+      ],
+      "family": "Arial, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif"
+    },
+    "platform": {
+      "fonts": [
+        {
+          "familyName": "Arial",
+          "postScriptName": "ArialMT",
+          "isCustomFont": false,
+          "glyphCount": 21
+        },
+        {
+          "familyName": "PingFang SC",
+          "postScriptName": "PingFangSC-Regular",
+          "isCustomFont": false,
+          "glyphCount": 5
+        },
+        {
+          "familyName": ".SF NS",
+          "postScriptName": ".SFNS-Regular",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    },
+    "feedback": [
+      {
+        "control": "Interface font",
+        "ms": 13.899999976158142
+      }
+    ],
+    "fontRequestsAddedBeforeReload": 0
+  },
+  {
+    "tag": "1280-light-large",
+    "sample": {
+      "sans": "Georgia, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace"
+    },
+    "paint": {
+      "first": {
+        "time": 14.400000005960464,
+        "css": ":root { --font-sans: \"Arial\", Inter, -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif !important; --font-mono: \"Menlo\", \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace !important; --font-inline-code: var(--font-mono); }",
+        "rootChildren": 0
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "time": 16
+        },
+        {
+          "name": "first-contentful-paint",
+          "time": 352
+        }
+      ],
+      "family": "Arial, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif"
+    },
+    "platform": {
+      "fonts": [
+        {
+          "familyName": "Arial",
+          "postScriptName": "ArialMT",
+          "isCustomFont": false,
+          "glyphCount": 21
+        },
+        {
+          "familyName": "PingFang SC",
+          "postScriptName": "PingFangSC-Regular",
+          "isCustomFont": false,
+          "glyphCount": 5
+        },
+        {
+          "familyName": ".SF NS",
+          "postScriptName": ".SFNS-Regular",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    },
+    "feedback": [
+      {
+        "control": "Interface font",
+        "ms": 13.599999994039536
+      },
+      {
+        "control": "Code font",
+        "ms": 10.600000023841858
+      }
+    ],
+    "fontRequestsAddedBeforeReload": 0
+  },
+  {
+    "tag": "1280-dark-standard",
+    "sample": {
+      "sans": "Georgia, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace"
+    },
+    "paint": {
+      "first": {
+        "time": 14.099999994039536,
+        "css": ":root { --font-sans: \"Arial\", Inter, -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif !important; --font-mono: \"Menlo\", \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace !important; --font-inline-code: var(--font-mono); }",
+        "rootChildren": 0
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "time": 16
+        },
+        {
+          "name": "first-contentful-paint",
+          "time": 360
+        }
+      ],
+      "family": "Arial, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif"
+    },
+    "platform": {
+      "fonts": [
+        {
+          "familyName": "Arial",
+          "postScriptName": "ArialMT",
+          "isCustomFont": false,
+          "glyphCount": 21
+        },
+        {
+          "familyName": "PingFang SC",
+          "postScriptName": "PingFangSC-Regular",
+          "isCustomFont": false,
+          "glyphCount": 5
+        },
+        {
+          "familyName": ".SF NS",
+          "postScriptName": ".SFNS-Regular",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    },
+    "feedback": [
+      {
+        "control": "Interface font",
+        "ms": 14
+      },
+      {
+        "control": "Code font",
+        "ms": 10.599999994039536
+      }
+    ],
+    "fontRequestsAddedBeforeReload": 0
+  },
+  {
+    "tag": "1280-dark-large",
+    "sample": {
+      "sans": "Georgia, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace"
+    },
+    "paint": {
+      "first": {
+        "time": 39.30000001192093,
+        "css": ":root { --font-sans: \"Arial\", Inter, -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif !important; --font-mono: \"Menlo\", \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace !important; --font-inline-code: var(--font-mono); }",
+        "rootChildren": 0
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "time": 44
+        },
+        {
+          "name": "first-contentful-paint",
+          "time": 396
+        }
+      ],
+      "family": "Arial, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif"
+    },
+    "platform": {
+      "fonts": [
+        {
+          "familyName": "Arial",
+          "postScriptName": "ArialMT",
+          "isCustomFont": false,
+          "glyphCount": 21
+        },
+        {
+          "familyName": "PingFang SC",
+          "postScriptName": "PingFangSC-Regular",
+          "isCustomFont": false,
+          "glyphCount": 5
+        },
+        {
+          "familyName": ".SF NS",
+          "postScriptName": ".SFNS-Regular",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    },
+    "feedback": [
+      {
+        "control": "Interface font",
+        "ms": 14.399999976158142
+      },
+      {
+        "control": "Code font",
+        "ms": 14.300000011920929
+      }
+    ],
+    "fontRequestsAddedBeforeReload": 0
+  },
+  {
+    "tag": "390-light-standard",
+    "sample": {
+      "sans": "Georgia, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace"
+    },
+    "paint": {
+      "first": {
+        "time": 14.800000011920929,
+        "css": ":root { --font-sans: \"Arial\", Inter, -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif !important; --font-mono: \"Menlo\", \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace !important; --font-inline-code: var(--font-mono); }",
+        "rootChildren": 0
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "time": 16
+        },
+        {
+          "name": "first-contentful-paint",
+          "time": 496
+        }
+      ],
+      "family": "Arial, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif"
+    },
+    "platform": {
+      "fonts": [
+        {
+          "familyName": "Arial",
+          "postScriptName": "ArialMT",
+          "isCustomFont": false,
+          "glyphCount": 21
+        },
+        {
+          "familyName": "PingFang SC",
+          "postScriptName": "PingFangSC-Regular",
+          "isCustomFont": false,
+          "glyphCount": 5
+        },
+        {
+          "familyName": ".SF NS",
+          "postScriptName": ".SFNS-Regular",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    },
+    "feedback": [
+      {
+        "control": "Interface font",
+        "ms": 11.800000011920929
+      }
+    ],
+    "fontRequestsAddedBeforeReload": 0
+  },
+  {
+    "tag": "390-light-large",
+    "sample": {
+      "sans": "Georgia, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace"
+    },
+    "paint": {
+      "first": {
+        "time": 14.900000005960464,
+        "css": ":root { --font-sans: \"Arial\", Inter, -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif !important; --font-mono: \"Menlo\", \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace !important; --font-inline-code: var(--font-mono); }",
+        "rootChildren": 0
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "time": 16
+        },
+        {
+          "name": "first-contentful-paint",
+          "time": 496
+        }
+      ],
+      "family": "Arial, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif"
+    },
+    "platform": {
+      "fonts": [
+        {
+          "familyName": "Arial",
+          "postScriptName": "ArialMT",
+          "isCustomFont": false,
+          "glyphCount": 21
+        },
+        {
+          "familyName": "PingFang SC",
+          "postScriptName": "PingFangSC-Regular",
+          "isCustomFont": false,
+          "glyphCount": 5
+        },
+        {
+          "familyName": ".SF NS",
+          "postScriptName": ".SFNS-Regular",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    },
+    "feedback": [
+      {
+        "control": "Interface font",
+        "ms": 14.400000005960464
+      },
+      {
+        "control": "Code font",
+        "ms": 9.699999988079071
+      }
+    ],
+    "fontRequestsAddedBeforeReload": 0
+  },
+  {
+    "tag": "390-dark-standard",
+    "sample": {
+      "sans": "Georgia, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace"
+    },
+    "paint": {
+      "first": {
+        "time": 14.099999994039536,
+        "css": ":root { --font-sans: \"Arial\", Inter, -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif !important; --font-mono: \"Menlo\", \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace !important; --font-inline-code: var(--font-mono); }",
+        "rootChildren": 0
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "time": 16
+        },
+        {
+          "name": "first-contentful-paint",
+          "time": 496
+        }
+      ],
+      "family": "Arial, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif"
+    },
+    "platform": {
+      "fonts": [
+        {
+          "familyName": "Arial",
+          "postScriptName": "ArialMT",
+          "isCustomFont": false,
+          "glyphCount": 21
+        },
+        {
+          "familyName": "PingFang SC",
+          "postScriptName": "PingFangSC-Regular",
+          "isCustomFont": false,
+          "glyphCount": 5
+        },
+        {
+          "familyName": ".SF NS",
+          "postScriptName": ".SFNS-Regular",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    },
+    "feedback": [
+      {
+        "control": "Interface font",
+        "ms": 11.599999994039536
+      },
+      {
+        "control": "Code font",
+        "ms": 9.800000011920929
+      }
+    ],
+    "fontRequestsAddedBeforeReload": 0
+  },
+  {
+    "tag": "390-dark-large",
+    "sample": {
+      "sans": "Georgia, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif",
+      "mono": "Menlo, \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace"
+    },
+    "paint": {
+      "first": {
+        "time": 38.30000001192093,
+        "css": ":root { --font-sans: \"Arial\", Inter, -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif !important; --font-mono: \"Menlo\", \"JetBrains Mono\", \"SF Mono\", \"DejaVu Sans Mono\", \"Liberation Mono\", ui-monospace, Menlo, Consolas, monospace !important; --font-inline-code: var(--font-mono); }",
+        "rootChildren": 0
+      },
+      "paint": [
+        {
+          "name": "first-paint",
+          "time": 40
+        },
+        {
+          "name": "first-contentful-paint",
+          "time": 520
+        }
+      ],
+      "family": "Arial, Inter, -apple-system, \"system-ui\", \"SF Pro Text\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", ui-sans-serif, system-ui, sans-serif"
+    },
+    "platform": {
+      "fonts": [
+        {
+          "familyName": "Arial",
+          "postScriptName": "ArialMT",
+          "isCustomFont": false,
+          "glyphCount": 21
+        },
+        {
+          "familyName": "PingFang SC",
+          "postScriptName": "PingFangSC-Regular",
+          "isCustomFont": false,
+          "glyphCount": 5
+        },
+        {
+          "familyName": ".SF NS",
+          "postScriptName": ".SFNS-Regular",
+          "isCustomFont": false,
+          "glyphCount": 1
+        }
+      ]
+    },
+    "feedback": [
+      {
+        "control": "Interface font",
+        "ms": 11.599999994039536
+      }
+    ],
+    "fontRequestsAddedBeforeReload": 0
+  }
+]
