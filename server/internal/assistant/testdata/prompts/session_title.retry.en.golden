@@ -6,4 +6,4 @@ User:
 Assistant:
 是两个组件一起用导致的。
 
-(The last answer “invalid title” did not match the format. Use one of the ten Chinese kinds above and keep the topic within 32 characters. Try again.)
+(The last answer “invalid title” did not match the format. Use one of the ten Chinese kinds in the system instructions and keep the topic within 32 characters. Try again.)

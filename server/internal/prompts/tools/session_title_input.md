@@ -6,7 +6,7 @@
 アシスタント：
 {{.Reply}}{{end}}{{if .Retry}}
 
-（前の回答「{{.Retry}}」は形式に合っていません。種類は上記の中国語の10種類から選び、トピックは{{.TopicMax}}文字以内にして、もう一度答えてください。）{{end}}{{else}}{{if .Source}}(This conversation was opened outside the app. Its extension called it “{{.Source}}”. Use that only as a hint and name the work this conversation is about.)
+（前の回答「{{.Retry}}」は形式に合っていません。種類はシステム指示にある中国語の10種類から選び、トピックは{{.TopicMax}}文字以内にして、もう一度答えてください。）{{end}}{{else}}{{if .Source}}(This conversation was opened outside the app. Its extension called it “{{.Source}}”. Use that only as a hint and name the work this conversation is about.)
 
 {{end}}User:
 {{.First}}{{if .Reply}}
@@ -14,7 +14,7 @@
 Assistant:
 {{.Reply}}{{end}}{{if .Retry}}
 
-(The last answer “{{.Retry}}” did not match the format. Use one of the ten Chinese kinds above and keep the topic within {{.TopicMax}} characters. Try again.){{end}}{{end}}{{else}}{{if .Source}}（这段对话不是在 App 里开的。开它的扩展管它叫「{{.Source}}」，只作参考：标题照样写这段对话要做的那件事。）
+(The last answer “{{.Retry}}” did not match the format. Use one of the ten Chinese kinds in the system instructions and keep the topic within {{.TopicMax}} characters. Try again.){{end}}{{end}}{{else}}{{if .Source}}（这段对话不是在 App 里开的。开它的扩展管它叫「{{.Source}}」，只作参考：标题照样写这段对话要做的那件事。）
 
 {{end}}用户：
 {{.First}}{{if .Reply}}
