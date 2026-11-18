@@ -1377,7 +1377,7 @@ function Devices() {
           {tok.created_at ? ` · ${t("settings.added_ago", { time: ago(tok.created_at) })}` : ""}
         </div>
         {tok.scopes?.length ? (
-          <div className="mt-0.5 break-words text-[11.5px] text-ink-3">{tok.scopes.join(" · ")}</div>
+          <div className="mt-0.5 break-words text-xs text-ink-3">{tok.scopes.join(" · ")}</div>
         ) : null}
       </div>
       {!gone && tok.id !== data?.current && (
