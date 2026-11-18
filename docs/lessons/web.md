@@ -1404,3 +1404,7 @@ approval (bypass permissions mode holds Persona's peer messages) read as "Not se
 owner retyped it on the computer. Keep the node's code on the entry and word the bubble from it (`entryReason`, also for
 entries kept from before), draw an uncertain one as waiting (caution color, no "Not sent"), and make a Check that finds
 nothing new say so. The node tells held from merely unconfirmed by the session's permission mode (`peer_held`).
+
+### Filter history after folding, and reconcile search snapshots (#10240)
+
+A stopped parent can own a working child or a pending side request. Fold the complete sidebar rows before selecting non-running history, or the parent disappears from live work and its children become duplicate history rows. A frozen content-search result can also outlive Resume or deletion: use the current complete row for its identity and drop identities removed from a loaded snapshot. Compute day headings and counts after all filters, with local calendar fields rather than UTC date substrings.
