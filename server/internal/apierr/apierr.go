@@ -250,9 +250,11 @@ var rpcFailureKeys = map[string]string{
 	"attach_busy":              "rpc-errors.attach_busy",
 	proto.CodeTerminalNotReady: "rpc-errors.terminal_not_ready",
 	// a start's new tab stopped on its shell (node/shellsettle.go, #2570)
-	proto.CodeShellWaiting:               "rpc-errors.shell_waiting",
-	proto.CodeStartLineRejected:          "rpc-errors.start_line_rejected",
-	"node_outdated":                      "rpc-errors.node_outdated",
+	proto.CodeShellWaiting:      "rpc-errors.shell_waiting",
+	proto.CodeStartLineRejected: "rpc-errors.start_line_rejected",
+	"node_outdated":             "rpc-errors.node_outdated",
+	// A private-profile switch is refused before any message reaches the CLI.
+	"assistant_launcher_profile_switch":  "rpc-errors.assistant_launcher_profile_switch",
 	"assistant_service_tier_start_only":  "rpc-errors.assistant_service_tier_start_only",
 	"assistant_service_tier_unsupported": "rpc-errors.assistant_service_tier_unsupported",
 	"assistant_service_tier_refused":     "rpc-errors.assistant_service_tier_refused",
@@ -363,7 +365,7 @@ func localizeFailure(body map[string]any, status int, err error, l i18n.Lang) {
 	// a summary that names {reason} carries the original words (git's, for a failed pull or push)
 	body["error"] = i18n.T(l, key, i18n.Args{"reason": original})
 	switch code {
-	case "assistant_service_tier_start_only", "assistant_service_tier_unsupported", "assistant_service_tier_refused":
+	case "assistant_launcher_profile_switch", "assistant_service_tier_start_only", "assistant_service_tier_unsupported", "assistant_service_tier_refused":
 		// The native diagnostic is not a person-facing instruction; the stable, translated refusal says what to do.
 		return
 	}
