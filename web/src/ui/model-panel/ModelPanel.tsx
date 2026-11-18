@@ -483,7 +483,8 @@ export function ModelPanel({ anchor, onClose, providers, state, scope, onPick, o
     );
   };
   const flyMode = (row: PanelRow): FlyoutMode => (row.kind === "favorite" ? "favorite" : row.customized ? "customized" : "recommended");
-  const empty = searching ? !found.length && !matches.length : !sections.length;
+  const loading = sections.some((s) => s.loading);
+  const empty = searching ? !found.length && !matches.length && !loading : !sections.length;
   const notes = [
     state.busy && {
       icon: "info" as const,
@@ -615,6 +616,7 @@ export function ModelPanel({ anchor, onClose, providers, state, scope, onPick, o
                           />
                         ))}
                         {found.map(renderRow)}
+                        {loading && <div role="status" className="flex items-center gap-2 px-3 py-2 text-label text-ink-3"><Spinner size={12} />{t("ui-modelpanel.loading")}</div>}
                       </>
                     ) : (
                       sections.map((s) => (

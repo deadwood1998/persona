@@ -644,6 +644,16 @@ describe("launcher-first acceptance #10249", () => {
     expect(launcher("account-4").getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("search waits for unread launcher lists before claiming there are no matches", async () => {
+    const { render } = await open({ providers: [claude(), codex({ models: null, loading: true, unavailable: undefined })] });
+    type(search(), "unlisted model");
+    expect(document.body.querySelector('[role="status"]')?.textContent).toContain("正在读取模型");
+    expect(document.body.textContent).not.toContain("没有匹配的模型");
+    act(() => render({ providers: [claude(), codex({ models: [], unavailable: undefined })] }));
+    expect(document.body.querySelector('[role="status"]')).toBeNull();
+    expect(document.body.textContent).toContain("没有匹配的模型");
+  });
+
   it("search keeps the running model's recorded effort even when its catalog cannot change it", async () => {
     await open({ providers: [codex({ models: [{ id: "gpt-5.5", name: "GPT 5.5", efforts: [] }] })], state: { current: { provider: "codex", model: "gpt-5.5", effort: "max" }, recommended: [] }, onApplyCurrent: async () => true });
     type(search(), "GPT");
