@@ -46,6 +46,8 @@ func TestAgentWaitExactInputAndFreshCompletion(t *testing.T) {
 		{"idle", "mine", proto.StatusIdle, now.Add(time.Second), items, true},
 		{"wrong input", "other", proto.StatusIdle, now.Add(time.Second), items, false},
 		{"cached idle", "mine", proto.StatusIdle, now, items, false},
+		{"idle at reply time", "mine", proto.StatusIdle, items[2].TS, items, false},
+		{"done at reply time", "mine", proto.StatusDone, items[2].TS, items, false},
 		{"working", "mine", proto.StatusWorking, now.Add(time.Second), items, false},
 		{"no reply", "mine", proto.StatusIdle, now.Add(time.Second), items[:2], false},
 		{"later input", "mine", proto.StatusIdle, now.Add(time.Second), append(append([]proto.Item{}, items...), proto.Item{ID: "later", Role: "user", Kind: proto.KindText}), false},

@@ -145,7 +145,7 @@ func agentWaitInput(items []proto.Item, inputID string) (proto.Item, bool) {
 }
 
 // A cached idle snapshot alone is not completion: first find this exact input,
-// then a reply after it and an idle snapshot at least as new as that reply.
+// then a reply after it and an idle snapshot strictly newer than that reply.
 // A later independent input makes attribution ambiguous, so it cannot satisfy us.
 func agentWaitObservation(items []proto.Item, inputID string, c proto.Session) (agentWaitResult, bool) {
 	seen := false
@@ -164,7 +164,7 @@ func agentWaitObservation(items []proto.Item, inputID string, c proto.Session) (
 			reply = it
 		}
 	}
-	if !seen || reply.ID == "" || reply.TS.IsZero() || c.UpdatedAt.Before(reply.TS) {
+	if !seen || reply.ID == "" || reply.TS.IsZero() || !c.UpdatedAt.After(reply.TS) {
 		return agentWaitResult{}, false
 	}
 	switch c.Status {
