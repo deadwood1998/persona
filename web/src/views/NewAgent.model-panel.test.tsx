@@ -117,6 +117,7 @@ async function open() {
 
 async function openPanel() {
   act(() => pill().click());
+  await act(async () => vi.dynamicImportSettled());
   await flush();
   expect(panel()).not.toBeNull();
   // These caller tests inspect model actions; disclose the catalog first.

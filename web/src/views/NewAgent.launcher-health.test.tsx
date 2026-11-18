@@ -61,6 +61,7 @@ async function open(key: string) {
 
 async function openPanel() {
   act(() => pill().click());
+  await act(async () => vi.dynamicImportSettled());
   await flush();
   // These caller tests inspect model actions; disclose the catalog first.
   for (const header of document.body.querySelectorAll<HTMLButtonElement>('[data-panel-launcher][aria-expanded="false"]')) act(() => header.click());

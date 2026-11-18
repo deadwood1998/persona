@@ -2078,6 +2078,8 @@ selector; where Persona's earlier rules differ, Cindy's wins, built from Persona
   read" line. Unknown, inherited, malformed, regional-only and input-size-tiered prices draw nothing; a reference price is
   not a quote from the gateway and is never inherited by another model.
 - **Launcher-first column** (#10249): Agent, handover, Assistant and New Agent all use the same shared column.
+  New Agent loads the panel on intent through the same lazy overlay boundary as chat pickers; the pill and draft stay
+  mounted while it loads, and a failed chunk closes only the panel so opening it again retries.
   Follow model configuration stays first where supported. Below it are up to three distinct saved setups, favorites
   first then recent, labeled with launcher and model and preserving their saved effort/speed; a pick is one action.
   Every launcher has a disclosure row in one scrollable list: full name, Agent kind, known default model, model count

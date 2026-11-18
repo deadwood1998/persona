@@ -56,6 +56,7 @@ const row = (key: string) => rows().find((r) => r.dataset.panelRow === key)!;
 const group = (name: string) => [...document.body.querySelectorAll<HTMLElement>("[data-panel-section]")].find((g) => g.getAttribute("aria-label") === name);
 async function openPanel() {
   act(() => pill().click());
+  await act(async () => vi.dynamicImportSettled());
   await flush();
   // These caller tests inspect model actions; disclose the catalog first.
   for (const header of document.body.querySelectorAll<HTMLButtonElement>('[data-panel-launcher][aria-expanded="false"]')) act(() => header.click());
