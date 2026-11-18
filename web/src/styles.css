@@ -30,7 +30,11 @@
     background: var(--page);
   }
 
-  [data-sidebar-column] > aside,
+  /* The sidebar's usage dialog may extend beyond the rounded background. */
+  [data-sidebar-column] > aside {
+    border-radius: var(--radius-card);
+  }
+
   [data-app-shell] > main,
   [data-app-shell] > aside > div:not([role="separator"]) {
     border-radius: var(--radius-card);
