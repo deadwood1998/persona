@@ -27,7 +27,13 @@ try {
         const button = e.target.closest?.("button");
         if (!/^Split (right|down)$/.test(button?.getAttribute("aria-label") ?? "")) return;
         const start = performance.now();
-        requestAnimationFrame(() => window.__paneFeedback.push({ nextFrameMs: +(performance.now() - start).toFixed(1), disabled: button.disabled }));
+        const observer = new MutationObserver(() => {
+          if (button.disabled) {
+            window.__paneFeedback.push({ disabledAfterMs: +(performance.now() - start).toFixed(1) });
+            observer.disconnect();
+          }
+        });
+        observer.observe(button, { attributes: true, attributeFilter: ["disabled"] });
       }, true);
     });
     const posts = [];
@@ -83,6 +89,7 @@ try {
     assert.ok(geometry.scroll <= geometry.width + 1 && geometry.right <= width + 1, JSON.stringify(geometry));
     assert.deepEqual(posts.slice(-2).map((p) => p.body), [{ pane: "w1:p2", direction: "right" }, { pane: "w1:p2", direction: "down" }]);
     const localFeedback = await page.evaluate(() => window.__paneFeedback);
+    const network = await page.evaluate(() => performance.getEntriesByType("resource").filter((e) => e.name.endsWith("/panes/split")).map((e) => ({ durationMs: +e.duration.toFixed(1) })));
     // The session-browser row uses the same menu as the sidebar and must have no pane controls.
     await page.goto(`${base}/terminal`);
     const row = page.locator('main a[href^="/s/"]').first();
@@ -93,7 +100,7 @@ try {
     await page.locator("[data-menu]").evaluateAll(async (els) => Promise.all(els.flatMap((el) => el.getAnimations()).map((a) => a.finished)));
     await page.screenshot({ path: join(shots, `${tag}-session-menu.png`) });
     assert.deepEqual(errors, []);
-    results.push({ tag, geometry, feedback, localFeedback, checks: "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow" });
+    results.push({ tag, geometry, feedback, localFeedback, network, checks: "split failure/success, scoped N/I/Backspace, clipboard, close cancel, session menu, no overflow" });
     console.log(`PASS ${tag}`);
     await context.close();
   }
