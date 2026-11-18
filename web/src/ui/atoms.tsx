@@ -386,6 +386,7 @@ export function Menu({
   width = 208,
   header,
   headerAsWritten = false,
+  focusScoped = false,
   container,
 }: {
   items: MenuItem[];
@@ -400,6 +401,8 @@ export function Menu({
   /** The header is or holds a name (a space's, a tab's, a worktree's): drawn as written. A label header is drawn in
    *  capitals, which would rewrite the name ("weather" as "WEATHER"). */
   headerAsWritten?: boolean;
+  /** Only this menu and its trigger own its keyboard actions (terminal toolbar). */
+  focusScoped?: boolean;
   /** Where the menu is put instead of the page's body: a full-screen layer above the menus' own (the image editor),
    *  whose look (its `dark`) the menu then takes. */
   container?: Element | null;
@@ -568,6 +571,7 @@ export function Menu({
       const { levels: ls, actives: act, subs: open, renaming: renamed } = live.current;
       if (composing(e) || renamed) return; // an input in the menu takes its own keys
       const t = e.target as HTMLElement | null;
+      if (focusScoped && t !== anchor && t?.closest("[data-menu]")?.getAttribute("data-menu") !== id) return;
       const typing = Boolean(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable));
       // a field elsewhere on the page keeps its letters and its Backspace
       if (typing && (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete")) return;
@@ -597,7 +601,7 @@ export function Menu({
       removeEventListener("keydown", key, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the handlers read `live`; only the menu's anchor and close change them
-  }, [anchor, onClose, id]);
+  }, [anchor, onClose, id, focusScoped]);
 
   const panelProps = (depth: number) => ({
     id,
