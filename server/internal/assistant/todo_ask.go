@@ -59,12 +59,14 @@ const (
 )
 
 // listedTodo is a to-do as GET /api/v1/todos lists it: with its ask while one waits (none: no `ask`, which a client that
-// does not know it never reads), and, while it is open and nobody works on it, why (`orphaned`, tasks_orphan.go).
+// does not know it never reads), and, while it is open and nobody works on it, why (`orphaned`, tasks_orphan.go); on
+// the routes, its view (todo_view_routes.go).
 type listedTodo struct {
 	Todo
-	Ask            *todoAsk        `json:"ask,omitempty"`
-	DecisionReview *decisionReview `json:"decision_review,omitempty"`
-	Orphaned       *TodoOrphan     `json:"orphaned,omitempty"`
+	Ask            *todoAsk                   `json:"ask,omitempty"`
+	DecisionReview *decisionReview            `json:"decision_review,omitempty"`
+	Orphaned       *TodoOrphan                `json:"orphaned,omitempty"`
+	View           *assistantwire.TodoSummary `json:"view,omitempty"`
 }
 
 // todoAsks are the open asks by to-do id, in the request's language: the ones the briefing lists (not passed, not ended,
@@ -138,7 +140,7 @@ func (s *Service) pushDecisionErr(ctx context.Context, id string) (bool, error) 
 	for _, o := range a.Options {
 		n.Todo.Options = append(n.Todo.Options, o.Label)
 	}
-	if d := deadlineText(l, s.location(ctx), a.Deadline, a.Reversible, time.Now()); d != "" {
+	if d := deadlineText(l, s.location(ctx), a.Deadline, a.Reversible, time.Now()); d != "" && a.AgentReply == nil {
 		n.Body += "\n" + d
 	}
 	// Self-contained (#3804): where it came from and stands, what each option leads to, what waiting costs.
