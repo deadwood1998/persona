@@ -58,6 +58,9 @@ it("takes N, I and Backspace only while the toolbar menu owns focus", async () =
   render(); open(); const field = document.body.appendChild(document.createElement("input")); field.focus();
   for (const k of ["n", "i", "Backspace"]) key(field, k);
   expect(fake.copy).not.toHaveBeenCalled(); expect(fake.post).not.toHaveBeenCalled(); expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
+  const outside = document.body.appendChild(document.createElement("div")); outside.tabIndex = 0; outside.focus();
+  for (const k of ["n", "i", "Backspace"]) key(outside, k);
+  expect(fake.copy).not.toHaveBeenCalled(); expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
   const trigger = button(t("session-terminalpanel.pane_actions")); trigger.focus(); key(trigger, "i");
   expect(fake.copy).toHaveBeenCalledWith("w1:p1");
   open(); key(trigger, "n"); expect(document.querySelectorAll('[role="menu"]')).toHaveLength(2);
