@@ -3,12 +3,12 @@
   "profiles": [
     {
       "name": "complete-1280-light-standard",
-      "feedbackMs": 3.600000023841858,
+      "feedbackMs": 3.199999988079071,
       "errors": []
     },
     {
       "name": "complete-1280-dark-standard",
-      "feedbackMs": 3.199999988079071,
+      "feedbackMs": 3.300000011920929,
       "errors": []
     }
   ]
