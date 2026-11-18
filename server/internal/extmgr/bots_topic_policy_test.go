@@ -29,6 +29,10 @@ func TestTopicStrictPolicyReadbackAndLegacyUpdate(t *testing.T) {
 	if row["require_owner_mention"] != true {
 		t.Fatalf("old client cleared policy: %v", row)
 	}
+	row = put(`{"topic_chats":[{"chat_id":"oc_strict","require_owner_mention":false}]}`)
+	if row["home"] == true {
+		t.Fatalf("reversing policy silently chose a home: %v", row)
+	}
 	row = put(`{"topic_chats":[{"chat_id":"oc_strict","home":true,"require_owner_mention":true}]}`)
 	if row["home"] != true {
 		t.Fatalf("explicit home: %v", row)
@@ -194,5 +198,15 @@ func TestTopicStrictPolicyDurabilityAndFailedSave(t *testing.T) {
 	_, out := w.do(t, "GET", "/api/v1/bots/feishu", "")
 	if out["topic_chats"].([]any)[0].(map[string]any)["require_owner_mention"] != true {
 		t.Fatalf("readback after failure: %v", out)
+	}
+}
+
+func TestTopicStrictPolicyKeepsLegacyImplicitHome(t *testing.T) {
+	w := newBotWorld(t)
+	w.pair(t)
+	w.topicsOn(t, topicChat)
+	w.do(t, "PUT", "/api/v1/bots/feishu", `{"topic_chats":[{"chat_id":"oc_topic","require_owner_mention":true}]}`)
+	if got := w.settings().homeChat(); got != topicChat {
+		t.Fatalf("tightening policy moved legacy home: %q", got)
 	}
 }

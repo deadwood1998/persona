@@ -120,5 +120,6 @@
   "topic_group_id": "Group ID",
   "topic_group_name": "Group name (optional)",
   "topic_add": "Add group",
-  "topic_policy_footer": "Applies only to your messages in this group, including settings commands. Other messages are ignored. A group added with this switch on does not become home automatically. Turn it off to restore the usual topic behavior."
+  "topic_policy_footer": "Applies only to your messages in this group, including settings commands. Other messages are ignored. A group added with this switch on does not become home automatically. Turn it off to restore the usual topic behavior.",
+  "topic_home_default": "Use default home"
 }

@@ -650,5 +650,9 @@ describe("topic group policies", () => {
     expect(calls.update[2].body).toEqual({ topic_chats: [{ ...group, home: true }] });
     await act(async () => calls.update[2].resolve(saved({ owner, topic_chats: [{ ...group, home: true }] })));
     expect(homeSelect().value).toBe("oc_example");
+    await act(async () => { const home=homeSelect(); home.value = ""; home.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(calls.update[3].body).toEqual({ topic_chats: [{ ...group, home: false }] });
+    await act(async () => calls.update[3].resolve(saved({ owner, topic_chats: [{ ...group, home: false }] })));
+    expect(homeSelect().value).toBe("");
   });
 });

@@ -45,7 +45,13 @@ try {
       ws.send(JSON.stringify({type:'hello',server_version:'synthetic',hub_name:'Example hub',features:[]}));
       ws.onMessage(raw=>{if(JSON.parse(String(raw)).type==='app_ping')ws.send(JSON.stringify({type:'pong'}));});
     });
-    const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(String(e)));page.on('console',m=>{if(m.type()==='error')console.error('browser console:',m.text());});page.setDefaultTimeout(15000);
+    const page=await context.newPage();
+    const settle = () => page.evaluate(async () => {
+      await document.fonts.ready;
+      await Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {})));
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    const errors=[];page.on('pageerror',e=>errors.push(String(e)));page.on('console',m=>{if(m.type()==='error')console.error('browser console:',m.text());});page.setDefaultTimeout(15000);
     await page.goto(`${base}/settings?tab=connectors&connector=feishu-bot`);
     const group=page.locator('[data-settings-group="topic-groups"]');await group.waitFor().catch(async error=>{console.error(await page.locator("body").innerText());throw error;});await group.scrollIntoViewIfNeeded();
     const toggle=page.getByRole('switch',{name:'Only respond when I mention the bot — Example group',exact:true});
@@ -60,10 +66,14 @@ try {
     assert.equal(await page.getByRole('combobox',{name:'Home topic group',exact:true}).inputValue(),'');
     assert.deepEqual(errors,[]);
     assert.equal(await group.evaluate(el=>el.scrollWidth>el.clientWidth),false);
+    await settle();
     await page.screenshot({path:join(shots,`${width}-${theme}-${textSize}.png`)});
     await page.getByRole('combobox',{name:'Home topic group',exact:true}).selectOption('oc_example');
     await page.waitForFunction(()=>document.querySelector('select[aria-label="Home topic group"]')?.value==='oc_example');
     assert.equal(edits.at(-1).topic_chats[0].home,true);
+    await page.getByRole('combobox',{name:'Home topic group',exact:true}).selectOption('');
+    await page.waitForFunction(()=>document.querySelector('select[aria-label="Home topic group"]')?.value==='');
+    assert.equal(edits.at(-1).topic_chats[0].home,false);
     if (textSize === 'large') {
       await page.getByRole('button', { name: 'Add group', exact: true }).click();
       await page.getByLabel('Group ID', { exact: true }).fill('oc_isolated');
@@ -73,7 +83,8 @@ try {
       await nextPolicy.click();
       await group.scrollIntoViewIfNeeded();
       assert.equal(await group.evaluate(el => el.scrollWidth > el.clientWidth), false);
-      await page.screenshot({ path: join(shots, `${width}-${theme}-enroll.png`) });
+      await settle();
+    await page.screenshot({ path: join(shots, `${width}-${theme}-enroll.png`) });
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     }
     console.log(`PASS ${width} ${theme} ${textSize}: failure retained policy, reverse, reload, separate home`);

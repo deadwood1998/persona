@@ -677,7 +677,7 @@ function TopicGroups({ status, saving, save }: { status: FeishuBotStatus; saving
       <Row label={t("settings-feishubot.topic_home")} hint={t("settings-feishubot.topic_home_hint")} wrapHint stackOnNarrow>
         <select aria-label={t("settings-feishubot.topic_home")} className={settingsInputClass} disabled={saving || !groups.length} value={groups.find((g) => g.home)?.chat_id ?? ""}
           onChange={(e) => void save(groups.map((g) => ({ ...g, home: g.chat_id === e.target.value })))}>
-          <option value="" disabled>{t("settings-feishubot.topic_home_none")}</option>
+          <option value="">{t(groups.some((g) => g.home) ? "settings-feishubot.topic_home_default" : "settings-feishubot.topic_home_none")}</option>
           {groups.map((g) => <option key={g.chat_id} value={g.chat_id}>{g.name || g.chat_id}</option>)}
         </select>
       </Row>

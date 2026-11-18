@@ -38,10 +38,12 @@ type BotChat struct {
 	ChatID string `json:"chat_id"`
 	Name   string `json:"name,omitempty"` // a label the app may set; the command in the chat leaves it empty
 	// Home marks the home topic group (#6146): where a request from a group that is not opted in opens its topic. At
-	// most one chat has it; with none marked, the first non-strict enrollment is the home (homeChat).
-	Home                bool      `json:"home,omitempty"`
-	RequireOwnerMention bool      `json:"require_owner_mention,omitempty"`
-	At                  time.Time `json:"at"`
+	// most one chat has it; with none marked, the first legacy enrollment is the home (homeChat).
+	Home                bool `json:"home,omitempty"`
+	RequireOwnerMention bool `json:"require_owner_mention,omitempty"`
+	// Strict enrollments never acquire an implicit home, even after their policy is reversed.
+	ExplicitHomeOnly bool      `json:"explicit_home_only,omitempty"`
+	At               time.Time `json:"at"`
 }
 
 type botChatView struct {
@@ -88,7 +90,7 @@ func (s FeishuBotSettings) homeChat() string {
 		}
 	}
 	for _, c := range s.TopicChats {
-		if !c.RequireOwnerMention {
+		if !c.ExplicitHomeOnly {
 			return c.ChatID
 		}
 	}
@@ -171,15 +173,20 @@ func (h *Manager) setTopicChats(ctx context.Context, want []BotChat, keepHome bo
 	for _, c := range want {
 		c.ChatID, c.Name = strings.TrimSpace(c.ChatID), strings.TrimSpace(c.Name)
 		c.At = b.clock().UTC()
-		if i := slices.IndexFunc(before, func(o BotChat) bool { return o.ChatID == c.ChatID }); i >= 0 {
+		existing := slices.IndexFunc(before, func(o BotChat) bool { return o.ChatID == c.ChatID })
+		if i := existing; i >= 0 {
 			c.At = before[i].At
 			c.RequireOwnerMention = before[i].RequireOwnerMention
+			c.ExplicitHomeOnly = before[i].ExplicitHomeOnly
 			if keepHome {
 				c.Home = before[i].Home
 			}
 		}
 		if required, ok := mentionEdits[c.ChatID]; ok {
 			c.RequireOwnerMention = required
+		}
+		if existing < 0 {
+			c.ExplicitHomeOnly = c.RequireOwnerMention
 		}
 		next = append(next, c)
 	}
