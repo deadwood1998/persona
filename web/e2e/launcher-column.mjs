@@ -57,6 +57,7 @@ try {
   const panel=page.locator('[data-model-panel]'); await panel.waitFor();
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-model-panel]')).visibility==='visible');
   await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{})));});
+  await page.waitForFunction(()=>{const el=document.querySelector('[data-model-panel]');return getComputedStyle(el).clipPath==='none' && getComputedStyle(el.firstElementChild).opacity==='1';});
   const tag=`${width}-${theme}-${size}`;
   if(size==='large') assert(await panel.evaluate(el=>parseFloat(getComputedStyle(el).animationDuration)<=0.002),`${tag}: reduced motion`);
   if(!baseline){assert.equal(await panel.locator('[data-panel-quick] [data-panel-row]').count(),3);}
