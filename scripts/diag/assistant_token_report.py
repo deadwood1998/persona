@@ -20,12 +20,12 @@ docs/assistant/assistant.md, "Local request source diagnostics" for boundaries a
 import argparse
 import collections
 import glob
+import importlib.util
 import json
 import os
+from pathlib import Path
 import re
 import sys
-
-from request_breakdown import Breakdown
 
 USAGE_FIELDS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
 
@@ -148,7 +148,13 @@ class Report:
         self.sidechain = collections.Counter()
         self.files = 0
         self.unknown = collections.defaultdict(set)
-        self.breakdown = Breakdown(since) if request_breakdown else None
+        self.breakdown = None
+        if request_breakdown:
+            # The report can also be loaded directly by file path, without this directory on sys.path.
+            spec = importlib.util.spec_from_file_location("request_breakdown", Path(__file__).with_name("request_breakdown.py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            self.breakdown = module.Breakdown(since)
 
     def add_round(self, kind, text, rest, counted):
         if not counted:

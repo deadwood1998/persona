@@ -108,6 +108,17 @@ class RequestTests(unittest.TestCase):
             self.assertIsNone(row["sources"][field]["bytes"])
         self.assertIsNone(row["retained_request_history_bytes"])
 
+    def test_claude_inventory_counts_repeated_user_entries(self):
+        repeated = {"type": "user", "uuid": "user", "message": {"content": "again"}}
+        result = self.run_lines([
+            repeated,
+            {"type": "assistant", "message": {"id": "response", "content": "reply"}},
+            repeated,
+            {"type": "assistant", "message": {"id": "response", "content": "reply"}},
+        ])
+        row = result["request_breakdown"]["rows"][0]
+        self.assertEqual(row["sources"]["history"]["bytes"], 15)
+
     def test_codex_rollout_avoids_mirrors_and_keeps_metadata_before_since(self):
         result = self.run_lines([
             {"type": "session_meta", "payload": {"base_instructions": {"text": "abc"}}},

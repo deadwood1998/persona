@@ -146,7 +146,7 @@ class Breakdown:
         seen = set()
         instructions_seen = False
         with open(path, errors="replace") as stream:
-            for ordinal, line in enumerate(stream):
+            for line in stream:
                 try:
                     entry = json.loads(line)
                 except ValueError:
@@ -197,13 +197,14 @@ class Breakdown:
                     # Keep unique content blocks, without returning their ids or text.
                     content = msg.get("content", "")
                     blocks = content if isinstance(content, list) else [content]
-                    identity = msg.get("id") or entry.get("uuid") or ("line", ordinal)
+                    identity = (msg.get("id") or entry.get("uuid")) if kind == "assistant" else None
                     for block in blocks:
-                        digest = hashlib.sha256(json.dumps(block, sort_keys=True, ensure_ascii=False).encode()).digest()
-                        key = (identity, digest)
-                        if key in seen:
-                            continue
-                        seen.add(key)
+                        if isinstance(identity, str) and identity:
+                            digest = hashlib.sha256(json.dumps(block, sort_keys=True, ensure_ascii=False).encode()).digest()
+                            key = (identity, digest)
+                            if key in seen:
+                                continue
+                            seen.add(key)
                         inv.content(block, "history")
                     observed = True
         if observed:
