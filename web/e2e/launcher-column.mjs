@@ -57,11 +57,13 @@ try {
   const panel=page.locator('[data-model-panel]'); await panel.waitFor();
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-model-panel]')).visibility==='visible');
   await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{})));});
+  await page.evaluate(async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);});
   await page.waitForFunction(()=>{const el=document.querySelector('[data-model-panel]');return getComputedStyle(el).clipPath==='none' && getComputedStyle(el.firstElementChild).opacity==='1';});
   const tag=`${width}-${theme}-${size}`;
+  if(!baseline && size==='large') assert(await panel.evaluate(el=>getComputedStyle(el).animationName==='none'),`${tag}: reduced motion skips the clip`);
   if(size==='large') assert(await panel.evaluate(el=>parseFloat(getComputedStyle(el).animationDuration)<=0.002),`${tag}: reduced motion`);
   if(!baseline){assert.equal(await panel.locator('[data-panel-quick] [data-panel-row]').count(),3);}
-  if(shots)await page.screenshot({path:resolve(shots,`${baseline?'before':'after'}-${tag}.png`)});
+  if(shots)await page.screenshot({animations:"disabled",path:resolve(shots,`${baseline?'before':'after'}-${tag}.png`)});
   const dimensions=await panel.evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:el.clientWidth,scroll:el.scrollWidth}));
   assert(dimensions.left>=0 && dimensions.right<=width+1 && dimensions.scroll<=dimensions.width+1,`${tag}: panel overflow`);
   if(baseline){
@@ -84,7 +86,7 @@ try {
   assert.equal(await panel.locator('[data-panel-row]:not([data-follow-row])').count(),7);
   assert.equal(await panel.locator('[data-panel-section], [data-panel-family]').count(),0);
   for(const [i,text] of (await panel.locator('[data-panel-row]:not([data-follow-row])').allTextContents()).entries()) assert(text.includes(`Account ${i}`),`${tag}: missing launcher`);
-  if(shots)await page.screenshot({path:resolve(shots,`search-${tag}.png`)});
+  if(shots)await page.screenshot({animations:"disabled",path:resolve(shots,`search-${tag}.png`)});
   await search.fill('vendor/new-model');
   const typed=panel.locator('[data-panel-row]:not([data-follow-row])').filter({hasText:'Account 3'});await typed.click({position:{x:48,y:12}});
   assert.deepEqual(await page.evaluate(()=>window.fixture.picks.at(-1)),{provider:'account-3',model:'vendor/new-model'});
@@ -96,7 +98,7 @@ try {
   const scroll=await panel.locator('[data-panel-launcher="account-11"]').evaluate(el=>{let p=el.parentElement;while(p&&getComputedStyle(p).overflowY!=='auto')p=p.parentElement;return {height:p.clientHeight,scroll:p.scrollHeight,width:p.clientWidth,scrollWidth:p.scrollWidth}});
   assert(scroll.scroll>scroll.height && scroll.scrollWidth<=scroll.width+1,`${tag}: twelve-launcher scroll`);
   await panel.locator('[data-panel-launcher="account-11"]').scrollIntoViewIfNeeded();
-  if(shots)await page.screenshot({path:resolve(shots,`many-${tag}.png`)});
+  if(shots)await page.screenshot({animations:"disabled",path:resolve(shots,`many-${tag}.png`)});
   assert.deepEqual(errors,[],`${tag}: browser errors`);
   results.push({tag,dimensions,feedback,scroll}); console.log(`PASS ${tag}`);
   await context.close();
