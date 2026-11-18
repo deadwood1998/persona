@@ -143,13 +143,13 @@ func (n *Node) sendCodexDesktop(ctx context.Context, src codexSource, text strin
 	if err != nil {
 		return refusal("bad_image", err.Error(), nil)
 	}
-	input := []map[string]any{}
-	if text != "" {
-		input = append(input, map[string]any{"type": "text", "text": text, "text_elements": []any{}})
-	}
-	for _, p := range paths {
-		input = append(input, map[string]any{"type": "localImage", "path": p})
-	}
+	// While the App runs a turn in the thread the message waits here and goes in once, as a turn of its own, when the
+	// turn ends (codex_desktop_queue.go): a start-turn into a running turn is steered into it and then run again.
+	return n.sendOrHoldCodexDesktop(ctx, src, codexDesktopMessage{text: text, paths: paths})
+}
+
+// startCodexDesktopTurn asks the window owning src's thread to run a turn with input, as the App's own composer does.
+func (n *Node) startCodexDesktopTurn(ctx context.Context, src codexSource, input []map[string]any) error {
 	ctx, cancel := context.WithTimeout(ctx, codexDesktopTimeout)
 	defer cancel()
 	c, err := dialCodexDesktop(ctx, src.home)
@@ -416,7 +416,12 @@ func (a *codexAppState) listed(thread string) bool {
 // placeCodexDesktop puts an App thread in its sidebar project — a subagent in its parent's (`group`) — and, for recent
 // ones, gives it its state. A subagent's finished turn is not something to read on its own: it is idle.
 func (n *Node) placeCodexDesktop(s *proto.Session, src codexSource, group string, subagent bool) {
-	app := loadCodexAppState(src.home)
+	n.placeCodexDesktopIn(s, src, group, subagent, nil)
+}
+
+// placeCodexDesktopIn is placeCodexDesktop with the App's state looked up once per home in a list pass (codexListPass).
+func (n *Node) placeCodexDesktopIn(s *proto.Session, src codexSource, group string, subagent bool, pass *codexListPass) {
+	app := pass.appState(src.home)
 	s.SpaceKind = "codex_app"
 	if pid, name := app.project(group, s.Cwd); pid != "" && name != "" && (app == nil || !app.projectless[group]) {
 		s.SpaceID, s.SpaceName = "codex-app:"+pid, name
@@ -444,7 +449,7 @@ func slotCodexDesktop(list []proto.Session) {
 		if s.SpaceKind != "codex_app" {
 			continue
 		}
-		s.SlotIndex = next[s.SpaceID]
+		s.SlotIndex = int32(next[s.SpaceID])
 		next[s.SpaceID]++
 	}
 }
@@ -615,7 +620,7 @@ func codexDesktopChatIn(src codexSource, pass *codexListPass) bool {
 		return ok && !t.origin().sub
 	}
 	o := readCodexOrigin(src.path)
-	return o.desktop && o.parent == "" && (o.persona || loadCodexAppState(src.home).listed(src.thread))
+	return o.desktop && o.parent == "" && (o.persona || pass.appState(src.home).listed(src.thread))
 }
 
 // loadedOwner is the App window that owns the thread, the App asked to open it when none does: it loads a thread it is
