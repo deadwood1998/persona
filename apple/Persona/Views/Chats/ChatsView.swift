@@ -1009,7 +1009,7 @@ private struct AgentsList: View {
     /// The agents, the questions and the machines the list shows (`AgentsFeed`): held still while it is scrolled or
     /// out of sight.
     @State private var feed = AgentsFeed()
-    #if DEBUG
+    #if DEBUG && os(iOS)
     @State private var sortShadow = AgentSortShadowObserver()
     #endif
 
@@ -1116,7 +1116,7 @@ private struct AgentsList: View {
 
     @discardableResult
     private func shadowSubmit(active: [SpaceGroup], quiet: [SpaceGroup]) -> Int {
-        #if DEBUG
+        #if DEBUG && os(iOS)
         guard sortShadow.enabled else { return 0 }
         let snapshot = shadowPresentation(active + quiet)
         sortShadow.submit(feed: feed, settings: projectionSettings(), presentation: snapshot)
@@ -1126,7 +1126,7 @@ private struct AgentsList: View {
         #endif
     }
 
-    #if DEBUG
+    #if DEBUG && os(iOS)
     private func shadowPresentation(_ groups: [SpaceGroup]) -> AgentSortPresentation {
         guard sortShadow.enabled else { return .init() }
         var result = AgentSortPresentation(folded: folded, expandedIdle: expandedIdle,
@@ -1629,7 +1629,7 @@ private struct AgentsList: View {
         #endif
         .onChange(of: machineFilter) { _, _ in kept = [] }
         .onAppear {
-            #if DEBUG
+            #if DEBUG && os(iOS)
             sortShadow.enable()
             #endif
             feed.follow(model)
@@ -2656,28 +2656,33 @@ private struct AgentsList: View {
 
     // MARK: Recently active
 
+    #if !os(iOS)
     private func workspaceAgentMenu(_ s: Session) -> AgentRowMenu {
-        #if os(iOS)
-        return AgentRowMenu(facts: AgentActionFacts(session: s, model: model), handlers: rowActions)
-        #else
-        return AgentRowMenu(key: s.key, pinned: model.isPinned(s.key), muted: model.isMuted(s), looping: s.loop != nil,
+        AgentRowMenu(key: s.key, pinned: model.isPinned(s.key), muted: model.isMuted(s), looping: s.loop != nil,
                      live: s.state.isLive, terminal: s.canTerminal, renamable: s.canRename, closable: s.canClose,
                      attachable: s.canAttach, deletable: s.canDelete,
                      paneActions: NodeMenu.offersPaneActions(s), actions: rowActions)
-        #endif
     }
+    #endif
 
 
     @ViewBuilder private func worktreeMenu(_ worktree: RepoTree.Worktree, agent: Session? = nil) -> some View {
         if let target = worktree.workspace {
             let direct = ordered(WorkspaceNavigation.directSessions(target, inventory: model.sessionsNow, catalog: workspaceCatalog.workspaces))
-            WorktreeSidebarMenu(workspace: target, parent: workspaceCatalog.workspaces.first { $0.key == target.parentKey },
-                                sessions: direct, agent: agent, menus: direct.map(workspaceAgentMenu),
-                                open: { target in
-                                    if target.key == worktree.workspace?.key { openWorktree(worktree) }
-                                    else { openWorktree(target) }
-                                }, newSession: { startingWorktree = $0 }, newChild: { creatingChild = $0 },
+            let parent = workspaceCatalog.workspaces.first { $0.key == target.parentKey }
+            let open: (HostWorkspace) -> Void = { target in
+                if target.key == worktree.workspace?.key { openWorktree(worktree) } else { openWorktree(target) }
+            }
+            #if os(iOS)
+            WorktreeSidebarMenu(workspace: target, parent: parent, sessions: direct, agent: agent, handlers: rowActions,
+                                open: open, newSession: { startingWorktree = $0 }, newChild: { creatingChild = $0 },
                                 rename: { renamingWorktree = $0 }).equatable()
+            #else
+            WorktreeSidebarMenu(workspace: target, parent: parent, sessions: direct, agent: agent,
+                                menus: direct.map(workspaceAgentMenu),
+                                open: open, newSession: { startingWorktree = $0 }, newChild: { creatingChild = $0 },
+                                rename: { renamingWorktree = $0 }).equatable()
+            #endif
         }
     }
 
@@ -3518,7 +3523,7 @@ private struct AgentsList: View {
             #endif
             .contextMenu { () -> AnyView in
                 #if os(iOS)
-                AnyView(AgentActionMenu(facts: AgentActionFacts(session: s, model: model), handlers: rowActions).equatable())
+                AnyView(AgentActionMenuReader(session: s, handlers: rowActions)) // not the row's to observe (#10231)
                 #else
                 AnyView(AgentRowMenu(s, model: model, actions: rowActions).equatable())
                 #endif
@@ -3602,7 +3607,12 @@ private struct KeyedRow<Key: Equatable & Sendable, Content: View>: View, Equatab
     nonisolated let key: Key
     @ViewBuilder let content: () -> Content
 
-    var body: some View { content() }
+    var body: some View {
+        #if DEBUG || PERF_SIGNPOST
+        let _ = PerfTrace.body("KeyedRow") // an Agents row built again (`RenderBudgetTests`)
+        #endif
+        content()
+    }
 
     nonisolated static func == (a: Self, b: Self) -> Bool { a.key == b.key }
 }
@@ -3867,14 +3877,7 @@ nonisolated struct AgentsListShown: Encodable, Equatable {
 
     /// The same machines as the list shows them: a machine's heartbeat (`lastSeen`, on every push of a busy hub) is
     /// shown only on the machines page, and drew the whole list again each time (#1495).
-    nonisolated static func sameListing(_ a: [Machine], _ b: [Machine]) -> Bool {
-        a.count == b.count && zip(a, b).allSatisfy { x, y in
-            guard x.lastSeen != y.lastSeen else { return x == y }
-            var y = y
-            y.lastSeen = x.lastSeen
-            return x == y
-        }
-    }
+    nonisolated static func sameListing(_ a: [Machine], _ b: [Machine]) -> Bool { AppModel.sameApartFromHeartbeat(a, b) }
 
     /// The rows that changed get their agent; the list gets the new list only if its structure changed.
     private func show(_ s: [Session]) {
@@ -5290,7 +5293,8 @@ private struct AgentsTop: ViewModifier {
 /// P5): the shell's other page in front, another tab, a page pushed over it. `AgentsList`'s body read the app's tab, the
 /// strip's `moving` and the chat on screen for this, each of which changes on a switch between Assistant and Agents, and so
 /// ran three or four times per switch, over every row (#5438). The list holds its feed while covered, the herdr and
-/// worktree polls stop, and a chat coming on screen closes the workspace opened beside the list.
+/// worktree polls stop, the chats not open are no longer warmed (#10582), and a chat coming on screen closes the
+/// workspace opened beside the list.
 private struct AgentsCoverWatch: View {
     @Environment(AppModel.self) private var model
     @Environment(\.shell) private var shell
@@ -5322,14 +5326,26 @@ private struct AgentsCoverWatch: View {
         return false
     }
 
+    /// Whether the Agents' chats not open are warmed for a tap in this list (`AgentSync.warmWhileInSight`, #10582): in
+    /// sight, and beside the page not folded away (the iPad's column, which `isCovered` leaves to the list's own polls).
+    private func warms(covered: Bool) -> Bool {
+        #if os(iOS)
+        if split?.listHidden == true && split?.drawer != true { return false }
+        #endif
+        return !covered
+    }
+
     var body: some View {
         let isCovered = isCovered
+        let warms = warms(covered: isCovered)
         Color.clear
             .allowsHitTesting(false)
             .accessibilityHidden(true)
             // Whether each machine's herdr runs, and the worktrees, while the list is in sight.
             .modifier(HerdrPolling(watch: herdr, key: herdrKey, covered: isCovered))
             .modifier(WorkspaceCatalogPolling(catalog: catalog, enabled: catalogEnabled, covered: isCovered))
+            // The chats a tap here opens are kept current while the list is in sight, its tab in front, the app active.
+            .tabActiveTask(id: warms) { if warms { await AgentSync.shared.warmWhileInSight() } }
             .onChange(of: isCovered, initial: true) { _, now in
                 covered(now)
                 // Out of sight, the hub's lists read for hints once a window; in sight, as they come.
