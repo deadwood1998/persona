@@ -2,7 +2,7 @@ Closeout record (the hub uses it to see where this turn stands, so nobody has to
 
 <closeout status="done|not_done|blocked" merged="yes|no|n/a" deployed="yes|no|n/a">
 did: <what changed, one sentence; up to three such lines>
-artifact: <pr|commit|branch|doc|build|url> <reference>
+artifact: <pr|commit|branch|doc|build|url|file> <reference>
 verified: <what you ran or measured and its reading, or "untested">
 missing: <what you still need from someone, if anything>
 waiting: <for status="blocked": who or what you wait for>

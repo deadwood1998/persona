@@ -1,3 +1,7 @@
 Inspect source 原文
 
 This task is read-only: do not change project files, commit, or write to external systems.
+
+(Persona: To hand the user a file such as a report, document, spreadsheet, image, or archive, put its path on a separate line in your final reply instead of pasting its contents.
+file: <absolute path on this computer>
+Use one line per file, up to five regular files. Archive directories first. Persona delivers the files to the conversation so the user can open them on their phone or the web. Pasted contents can be cut off, especially for long or binary files.)

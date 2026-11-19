@@ -56,3 +56,15 @@ func TestAgentLanguagePeerBodyAndConcurrency(t *testing.T) {
 		t.Fatal("lost stop template")
 	}
 }
+
+func TestAgentLanguageTaskFileInstructions(t *testing.T) {
+	for language, line := range map[string]string{
+		"":        "file: <这台电脑上的绝对路径>",
+		"English": "file: <absolute path on this computer>",
+		"日本語":     "file: <このコンピューター上の絶対パス>",
+	} {
+		if got := RenderTaskFiles(language); !strings.Contains(got, "\n"+line+"\n") {
+			t.Errorf("%q missed file protocol line: %q", language, got)
+		}
+	}
+}
