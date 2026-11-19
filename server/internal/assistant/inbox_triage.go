@@ -267,7 +267,7 @@ func (s *Service) askTriage(ctx context.Context, it *InboxItem, timeout time.Dur
 	hello := s.hello(ctx)
 	language := answerLanguage(hello.Locale)
 	b.mu.Lock()
-	last, input, rules := it.Last, prompts.RenderInboxItem(b.promptItemIn(it, language)), strings.TrimSpace(it.Rules)
+	last, input, rules := it.Last, prompts.RenderInboxItem(b.triagePromptItem(it, language)), strings.TrimSpace(it.Rules)
 	b.mu.Unlock()
 	return last, s.triageModelIn(ctx, input, rules, timeout, hello)
 }
@@ -354,9 +354,13 @@ func (b *inboxBook) ruleTier(it *InboxItem) string {
 	return TierNoise
 }
 
-// triageInput is the item as the models read it (prompts/inbox/item.md).
-func (b *inboxBook) triageInput(it *InboxItem) string {
-	return prompts.RenderInboxItem(b.promptItem(it))
+// triagePromptItem separates the latest Lark DM for triage and the no-write preview.
+func (b *inboxBook) triagePromptItem(it *InboxItem, language string) prompts.InboxItem {
+	p := b.promptItemIn(it, language)
+	if it.Connector != nil && it.Source == "larkcli" && it.Kind == KindDM {
+		p.Latest = it.Preview
+	}
+	return p
 }
 
 func (b *inboxBook) promptItem(it *InboxItem) prompts.InboxItem {

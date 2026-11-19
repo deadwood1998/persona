@@ -26,8 +26,13 @@ These are not action; choose fyi or noise by relevance:
 - Automated alerts, monitoring, water/capacity reports, Oncall notices, ticket progress, especially repeated alerts, unless explicitly assigned to the user personally for immediate action;
 - @everyone announcements and reminders (weekly reports, OKR updates, asking who still uses something);
 - DM/group chatter, greetings, jokes, emoji, stickers or musings with no reply expected;
-- Someone already answered, the other party says they will handle/investigate it, says OK / resolved / no longer needed, or the user already replied;
+- Someone has explicitly taken over, answered or handled the current request, or the other party confirms the current issue is resolved or no longer needed;
 - Reminders and progress Persona itself sent to the user through Lark, such as “Approval needed: …”, “A question for you: …”, “… is waiting in the terminal”, “Please verify: …”, “Task progress: …”, “Still waiting for you: …”; these are handled in the Persona app.
+
+
+Judge each event separately from the new activity assigned to it and any outstanding requests. The last message in the batch or a reply resolving another event cannot settle it.
+An earlier reply does not resolve a request raised later in the same event. A promise to look at it or confirmation about a different issue does not close it.
+[Image: ...] is a placeholder for an unread image. In a human work DM, new activity containing such an image calls for action unless text clearly says the current request is informational or resolved.
 
 A human DM defaults to action: the person deliberately approached the user, even without a question mark (a link, analysis, or “I'll ask you to look shortly”); only clear chatter, greetings,
 jokes or emoji are fyi. Bot/app DMs are not human DMs. Otherwise, when unsure, ask: if the user skips this, will someone wait or something they should do be delayed? If yes, choose action;

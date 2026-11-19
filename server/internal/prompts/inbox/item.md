@@ -10,7 +10,11 @@
 {{else if eq .Kind "moment"}}種類：Lark Moments（社内全体への公開投稿）でユーザーの投稿やコメントへの返信、またはメンションがある。多くは雑談や賛同で、質問や応答の依頼がある場合だけ対応が必要
 {{else if eq .Kind "mail"}}{{if .MailDirect}}種類：ユーザー宛てのメール
 {{else}}種類：CC、一斉送信、メーリングリストのメール
-{{end}}{{end}}{{ctx .Context}}{{else if .Language}}{{if .Described}}Type: {{.Described}}
+{{end}}{{end}}{{if .Latest}}
+最新のメッセージ：{{ctx .Latest}}
+
+会話の文脈（以前のメッセージを含む）：
+{{end}}{{ctx .Context}}{{else if .Language}}{{if .Described}}Type: {{.Described}}
 {{else if eq .Source "github"}}{{template "inbox/kinds/github" .}}
 {{else if eq .Source "imessage"}}{{template "inbox/kinds/imessage" .}}
 {{else if eq .Source "larkcli"}}{{template "inbox/kinds/larkcli" .}}
@@ -22,7 +26,11 @@
 {{else if eq .Kind "moment"}}Type: someone commented on the user's post, replied to their comment or mentioned them in Lark Moments (company-wide public posts, like a social feed); most are chatter or appreciation, needing the user only for a question or a requested response
 {{else if eq .Kind "mail"}}{{if .MailDirect}}Type: email sent directly to the user
 {{else}}Type: email copied to the user, bulk mail or a mailing list
-{{end}}{{end}}{{ctx .Context}}{{else}}{{if .Described}}类型：{{.Described}}
+{{end}}{{end}}{{if .Latest}}
+Newest message: {{ctx .Latest}}
+
+Conversation context (including earlier messages):
+{{end}}{{ctx .Context}}{{else}}{{if .Described}}类型：{{.Described}}
 {{else if eq .Source "github"}}{{template "inbox/kinds/github" .}}
 {{else if eq .Source "imessage"}}{{template "inbox/kinds/imessage" .}}
 {{else if eq .Source "larkcli"}}{{template "inbox/kinds/larkcli" .}}
@@ -34,4 +42,7 @@
 {{else if eq .Kind "moment"}}类型：公司圈（飞书 Moments，公司内的公开动态，类似朋友圈）里有人评论了用户的帖子、回复了用户的评论或 @ 了用户；多数是闲聊和捧场，有人在问用户问题、要用户回应时才需要用户
 {{else if eq .Kind "mail"}}{{if .MailDirect}}类型：邮件（直接发给用户）
 {{else}}类型：邮件（抄送、群发或邮件列表）
-{{end}}{{end}}{{ctx .Context}}{{end}}
+{{end}}{{end}}{{if .Latest}}本次新消息：{{ctx .Latest}}
+
+会话上下文（含较早消息）：
+{{end}}{{ctx .Context}}{{end}}

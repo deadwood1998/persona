@@ -38,7 +38,7 @@ func (s *Service) InboxTriagePreview(ctx context.Context, p assistantwire.InboxT
 		it := &InboxItem{ID: "preview", Source: source}
 		fillConnectorItem(it, t)
 		b.mu.Lock()
-		item := b.promptItemIn(it, language)
+		item := b.triagePromptItem(it, language)
 		b.mu.Unlock()
 		if item.Described == "" {
 			item.Described = p.Kinds[it.Kind]

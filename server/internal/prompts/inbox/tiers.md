@@ -13,8 +13,13 @@ Lark（lark-cli 経由を含む）のグループは必ずこの方式を使う�
 - アラート、監視、使用量・容量報告、Oncall 通知、チケット進捗などの自動メッセージ、特に同じ警告の繰り返し。ただし本人に即時対応を明示的に割り当てた場合を除く。
 - 全員宛ての通知やリマインダー（週報、OKR 更新、まだ使っている人の確認など）。
 - 個人・グループの雑談、挨拶、冗談、絵文字、スタンプ、感想で、返事を待っていないもの。
-- すでに誰かが回答した、相手が自分で対応・調査すると言った、了承・解決・不要を伝えた、または本人がすでに返答したもの。
+- 現在の依頼を誰かが明確に引き受けた、回答・対応した、または相手が現在の問題は解決済み・対応不要と確認したもの。
 - Persona 自身が Lark 経由で本人に送った承認依頼、質問、端末での待機、検収依頼、進捗、返事待ちの通知。これらは Persona アプリ内で扱う。
+
+
+各案件を個別に判断し、その案件に割り当てられた新しい動きと未解決の依頼を考慮する。バッチの最後のメッセージや別件の返信・確認だけで案件を完了にしない。
+古い返信は、同じ案件で後から出た新しい依頼の解決を示さない。対応予定という約束や、別件を確認したという発言だけでは完了にしない。
+[Image: ...] は未確認の画像を示すプレースホルダー。人からの仕事の個人チャットの新着に画像が含まれ、情報共有のみ・解決済みと明記されていない場合は action を選ぶ。
 
 人からの個人チャットは既定で action。本人を選んで連絡しており、疑問符がなくても（リンク、分析、「後で見てもらう」など）同じ。明らかな雑談、挨拶、
 冗談、絵文字だけなら fyi。ボットやアプリの個人チャットは人のものではない。他で迷ったら、本人が見なければ誰かを待たせるか、必要な用事が遅れるかを考える。そうなら action、
@@ -33,8 +38,13 @@ These are not action; choose fyi or noise by relevance:
 - Automated alerts, monitoring, water/capacity reports, Oncall notices, ticket progress, especially repeated alerts, unless explicitly assigned to the user personally for immediate action;
 - @everyone announcements and reminders (weekly reports, OKR updates, asking who still uses something);
 - DM/group chatter, greetings, jokes, emoji, stickers or musings with no reply expected;
-- Someone already answered, the other party says they will handle/investigate it, says OK / resolved / no longer needed, or the user already replied;
+- Someone has explicitly taken over, answered or handled the current request, or the other party confirms the current issue is resolved or no longer needed;
 - Reminders and progress Persona itself sent to the user through Lark, such as “Approval needed: …”, “A question for you: …”, “… is waiting in the terminal”, “Please verify: …”, “Task progress: …”, “Still waiting for you: …”; these are handled in the Persona app.
+
+
+Judge each event separately from the new activity assigned to it and any outstanding requests. The last message in the batch or a reply resolving another event cannot settle it.
+An earlier reply does not resolve a request raised later in the same event. A promise to look at it or confirmation about a different issue does not close it.
+[Image: ...] is a placeholder for an unread image. In a human work DM, new activity containing such an image calls for action unless text clearly says the current request is informational or resolved.
 
 A human DM defaults to action: the person deliberately approached the user, even without a question mark (a link, analysis, or “I'll ask you to look shortly”); only clear chatter, greetings,
 jokes or emoji are fyi. Bot/app DMs are not human DMs. Otherwise, when unsure, ask: if the user skips this, will someone wait or something they should do be delayed? If yes, choose action;
@@ -53,8 +63,13 @@ otherwise choose fyi.{{else}}- action（需要你）：冲着用户本人来，�
 - 告警、监控、水位 / 容量报告、Oncall 通知、工单进度这类自动发的消息，同一个告警反复来的更是；除非消息明确派给用户本人、要他马上处理；
 - @所有人 的通知和提醒（填周报、更新 OKR、问谁还在用某个东西）；
 - 私聊或群里的闲聊、寒暄、玩笑、表情、贴纸、感慨，对方并没有在等用户回什么；
-- 已经有人答了，对方说自己去处理、去了解了，说好了 / 已解决 / 不用了，或者用户自己已经回过了；
+- 当前请求已有别人明确接手去处理、已经答清楚或处理完，或者对方明确确认当前问题已解决 / 不用了；
 - 助手（Persona）自己经飞书发给用户的提醒和进展，比如「要你批准：…」「在问你：…」「…在终端里等你」「请验收：…」「任务进展：…」「还在等你：…」：这些在 Persona App 里处理。
+
+分别判断每个事项的整体状态：结合归入该事项的新活动及其仍未解决的请求，不能只看批次最后一条消息，也不能用其他事项的回复或确认替它结案。
+较早的回复不能证明同一事项后来出现的新请求已解决。「我看看」「稍后处理」只是承诺处理，确认另一个问题也不能关闭后来的新问题。
+[Image: ...] 只是未读取的图片占位，不代表你看到了图里的内容。真人工作私聊里，归入某事项的新活动包含这样的图片，没有明确文字说明该事项的当前请求仅供同步或已解决时，
+需要用户查看或回应，选 action；不要仅凭旧对话里的回复或确认就判为 fyi。
 
 私聊里真人发来的消息默认是 action：他特意找的就是用户，哪怕没写问号（发个链接、发个分析、说一句「一会儿找你看下」）；只有明显是闲聊、寒暄、
 玩笑、表情时才是 fyi。机器人和应用发来的私聊不算真人。别的拿不准时问自己：用户不看这一条，会不会有人干等着他、或者他该做的事被耽误？会，选 action；
