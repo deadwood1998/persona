@@ -129,6 +129,7 @@ describe("the model panel for a new Agent", () => {
     const { onPreset, onPick } = await open();
     const preset = row("review", "预设");
     expect(preset.textContent).toContain("Code review");
+    expect(preset.querySelector("[data-row-setup]")?.getAttribute("title")).toContain("Claude");
     expect(preset.querySelector('button[aria-label="收藏"], [data-row-customize]')).toBeNull();
     act(() => preset.click());
     await flush();

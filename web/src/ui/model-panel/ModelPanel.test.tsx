@@ -178,6 +178,20 @@ describe("the model panel", () => {
     expect(document.body.textContent).toContain("需要新开对话");
   });
 
+  it("selects the same model ID from a specific launcher", async () => {
+    const shared = [{ id: "fable", name: "Fable", efforts: [] }];
+    const { onPick } = await open({ providers: [claude({ models: shared }), codex({ models: shared, unavailable: undefined })], state: { current: null, recommended: [], starting: true } });
+    expect(groups()).toEqual(["Claude: ", "Codex: "]);
+    act(() => launcher("claude").click());
+    expect(groups()).toEqual(["Claude: Fable", "Codex: "]);
+    act(() => launcher("codex").click());
+    expect(groups()).toEqual(["Claude: Fable", "Codex: Fable"]);
+    const codexRow = launcher("codex").closest("[data-panel-section]")!.querySelector<HTMLElement>("[data-panel-row]")!;
+    act(() => codexRow.click());
+    await flush();
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ provider: "codex", model: "fable" }));
+  });
+
   it("draws a provider's weekly quota bar and reset tooltip, and no bar when it is unknown", async () => {
     await open({
       quotas: {
@@ -524,7 +538,7 @@ describe("the model panel", () => {
     act(() => button("Codex").click());
     type(search(), "vendor/new-1");
     expect(rows().map((r) => r.textContent)).toEqual([expect.stringContaining("使用「vendor/new-1」")]);
-    expect(row("vendor/new-1").textContent).toContain("Claude");
+    expect(row("使用「vendor/new-1」").textContent).toContain("Claude · 列表里没有，按输入的 ID 使用");
     key(search(), "Enter");
     await flush();
     expect(onPick).toHaveBeenCalledWith({
@@ -539,7 +553,7 @@ describe("the model panel", () => {
     const onForget = vi.fn();
     await open({ onForget });
     const typed = row("vendor/model-x");
-    expect(typed.textContent).toContain("输入过的");
+    expect(typed.textContent).toContain("Claude · 输入过的");
     expect(typed.querySelector(".font-mono")).not.toBeNull();
     act(() => typed.querySelector<HTMLButtonElement>('button[aria-label="忘记「vendor/model-x」"]')!.click());
     expect(onForget).toHaveBeenCalledWith("claude", "vendor/model-x");
@@ -712,7 +726,7 @@ describe("a long list", () => {
     expect(document.body.querySelector("[data-panel-more]")).toBeNull();
   });
 
-  it("a name cut short shows the whole model ID as its second line; others show it only on a touch screen", async () => {
+  it("shows the whole ID in a launcher and adds the launcher label on touch in search", async () => {
     const sw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
     const cw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
     // a name longer than 20 characters does not fit
@@ -751,7 +765,7 @@ describe("a long list", () => {
       const short = row("Sonnet 5").querySelector<HTMLElement>("[data-row-id]")!;
       expect(short.dataset.rowId).toBe("touch");
       expect(short.className).toContain("hidden");
-      expect(short.textContent).toBe("sonnet");
+      expect(short.textContent).toBe("Claude · sonnet");
     } finally {
       if (sw) Object.defineProperty(HTMLElement.prototype, "scrollWidth", sw);
       if (cw) Object.defineProperty(HTMLElement.prototype, "clientWidth", cw);
