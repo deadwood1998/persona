@@ -695,6 +695,9 @@ func (m *Machine) callOnce(ctx context.Context, method string, params any, out a
 			method = nodeproto.SourceSend
 		}
 	}
+	if dial, ok := params.(devicewire.PortDial); method == devicewire.MethodPortDial && ok && dial.ID != "" {
+		return m.callPortDial(ctx, p, dial, out)
+	}
 	return p.Call(ctx, method, params, out)
 }
 
