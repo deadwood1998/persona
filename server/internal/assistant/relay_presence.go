@@ -126,6 +126,9 @@ func (msg relayMsg) decisionSince() time.Time {
 // session list shows the round ended (ownerRoundsSeen), or on its safety limits if the list never shows the round
 // working or never shows it stop.
 func (b *relayBook) holdLocked(to string, msg relayMsg, now time.Time) time.Duration {
+	if wait := msg.Due.Sub(now); !msg.Due.IsZero() && wait > 0 {
+		return wait // past the relay rate: it waits for the window (#10400)
+	}
 	if msg.Owner {
 		return 0
 	}
@@ -164,7 +167,7 @@ func (b *relayBook) pickLocked(to string, now time.Time) (i int, wait time.Durat
 	stuck := -1
 	q := b.st.Queue[to]
 	for j, m := range q {
-		if h := b.holdLocked(to, m, now); h > 0 {
+		if h := max(b.holdLocked(to, m, now), m.LookAfter.Sub(now)); h > 0 {
 			if wait == 0 || h < wait {
 				wait = h
 			}
@@ -323,6 +326,11 @@ func (s *Service) drainAfter(machine, id string, wait time.Duration) {
 	b := &s.relays
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	s.drainAfterLocked(machine, id, wait)
+}
+
+func (s *Service) drainAfterLocked(machine, id string, wait time.Duration) {
+	b := &s.relays
 	if t := b.holds[id]; t != nil {
 		t.Stop()
 	}
@@ -353,10 +361,9 @@ func (s *Service) drainConversations(machine string, ids []string) bool {
 	return true
 }
 
-// drainHeldRelays is the look every superviseTick that nothing held for the owner is left behind: a conversation
-// the owner spoke in, with a message that may go by now and no timer of its own (the manager restarted meanwhile, or
-// the timer could not read the list), is drained. The owner's last message is forgotten once ownerPresentFor passed
-// and what it held was handed on.
+// drainHeldRelays recovers queues whose timers were lost on restart or could not read the session list. It covers
+// owner presence, rate limits, and tries in doubt. The owner's last message is forgotten once ownerPresentFor has
+// passed and what it held was handed on.
 func (s *Service) drainHeldRelays(ctx context.Context, now time.Time) {
 	b := &s.relays
 	b.mu.Lock()
@@ -365,6 +372,16 @@ func (s *Service) drainHeldRelays(ctx context.Context, now time.Time) {
 		return
 	}
 	var due []string
+	for id, q := range b.st.Queue {
+		if _, spoke := b.st.Spoke[id]; spoke || b.holds[id] != nil || b.draining[id] {
+			continue
+		}
+		if slices.ContainsFunc(q, func(m relayMsg) bool { return !m.Due.IsZero() || !m.TriedAt.IsZero() }) {
+			if i, _ := b.pickLocked(id, now); i >= 0 {
+				due = append(due, id)
+			}
+		}
+	}
 	for id, spoke := range b.st.Spoke {
 		if len(b.st.Queue[id]) == 0 {
 			if now.Sub(spoke) >= ownerPresentFor {

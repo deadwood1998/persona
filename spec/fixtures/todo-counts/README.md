@@ -23,7 +23,9 @@ values to the schema and the generated types read them back unchanged (the tests
   project's slug, and a place is titled by its project.
 - `expected.counts`: the `TodoCounts`. `expected.places`: the `TodoPlaces` answer, whose `counts` equal
   `expected.counts`. Compare as JSON values.
-- `expected.order` (optional, added here): every to-do of the list by its view's section, in the order of its `rank`.
+- `expected.order` (added here): every to-do of the list by its view's section, in the order of its `rank`. Required
+  for every case with to-dos (optional only for an empty list): the iOS app files rows from it to replay the counts
+  (`apple/PersonaTests/TodoCountsFallbackTests.swift`), and the hub's projection test checks it against the ranks.
 
 All data is made up.
 
@@ -75,7 +77,8 @@ All data is made up.
   they are. A wait the run ends by itself (background commands, a `/loop`) is Working, not Waiting.
 - Every to-do is ranked within its section, a step its parent carries too: clients sort the rows they draw by rank,
   and a gap left by a step they do not draw changes nothing.
-- Not pinned yet: Today's and Upcoming's own rows, and what the hub does across several managers (its own test).
+- Not pinned yet: Today's and Upcoming's own rows. What the hub does across several managers has its own test
+  (`server/internal/hub/todo_view_test.go`): it adds the counts up and joins the places, ranking nothing again.
   `rank` is worked out per manager's list, and the hub only joins the lists, so a merged section can hold equal ranks:
   clients order by `rank`, then the manager, then the id.
 

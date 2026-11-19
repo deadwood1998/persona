@@ -21,6 +21,7 @@ from them instead of being written once per platform:
 | `storage.schema.json` | **Plugin-side.** Default-deny installation-owned business storage (#1187): CAS/atomic transactions, bounded request receipts and queues, and opaque chunked blobs; manager-owned authentication/retention/restore are not guest RPC methods. See `docs/extensions/extensions.md` ("Installation-owned business storage") |
 | `todos.schema.json` | **Plugin-side.** The to-do events an extension subscribed to and was granted `todos.read` is told of (`docs/extensions/extensions.md` "Events"): `event.todo.changed`, `event.todo.decision` |
 | `leaders.schema.json` | **Plugin-side.** The leader events an extension subscribed to and was granted `leaders.read` is told of (`docs/extensions/extensions.md` "Leader events"): `event.leader.changed`, `event.leader.report` |
+| `repository.schema.json` | **Plugin-side.** The `repository_providers` extension point's calls (#10330): the manager asks a code-hosting source's program `repo.parse` (what repository an address on its hosts names), `repo.check` (it exists and is visible), `repo.link` (an issue or pull request of a repository, by address or by kind and number) and the optional `repo.describe` (a stored link's title and state), and re-checks every answer; `RepoErrorCode`. The manifest's item (`RepositoryProviderItem`, `RepositoryLinkLabel`, `RepositoryLinkKind`) is in `manifest.schema.json` |
 | `examples/` | Examples: `<definition>.<name>.json` must hold to the schema; those under `examples/invalid/` must not. The plugin-side schemas' are in `examples/plugin/` (and `examples/plugin/invalid/`) |
 
 ## Generating
@@ -389,6 +390,11 @@ stream's source may draw them. Its examples are `examples/View.v8-*.json`.
 UI version 9 (#9337) adds one field: a tile's `gauge` (`Gauge`: `ratio`, `unit`, `color`), `x-since: 9`, a ring with the tile's
 value in its centre. The hub's `downgrade9` (`server/internal/extension/ui_v9.go`) leaves it out for an older app and puts the unit,
 the percentage and the color on the tile instead. Its examples are `examples/View.v9-*.json`.
+UI version 10 (#9727) adds one component, `graph` (`GraphComponent`: `nodes`, `edges`, `layout`, `direction`, `selected`,
+`folded`): a canvas of nodes joined by edges, each node `GraphNode` with `id`, `title` and optional state, color, progress,
+group and action. The hub's `downgrade10` (`server/internal/extension/ui_v10.go`) draws an older app one indented row per
+visible node in reading order; a native stream's source may draw a graph too (`UIStreamItem` lists it), but its client
+never gets one, at 10 included: the hub draws it as those rows. Its examples are `examples/View.v10-*.json`.
 
 ## Adding a call
 

@@ -128,8 +128,9 @@ type Todo struct {
 	// PartOf: the to-do whose request this one is a piece of; After: the pieces of that request it waits for
 	// (todo_pieces.go, docs/assistant/todos.md "Requests in pieces"). Both empty for a to-do that is no piece. Clients
 	// that do not know them show the to-do as ever.
-	PartOf string   `json:"part_of,omitempty"`
-	After  []string `json:"after,omitempty"`
+	PartOf               string   `json:"part_of,omitempty"`
+	After                []string `json:"after,omitempty"`
+	RequireAcceptedAfter bool     `json:"require_accepted_after,omitempty"`
 	// Brief: what was asked when the work was handed out, with its log, and Lineage: the to-dos that carried the work
 	// (#3822, task_brief.go). Filled in where the apps read the to-dos (withBrief); absent for a to-do with no brief.
 	Brief   *TaskBrief    `json:"brief,omitempty"`
@@ -199,13 +200,14 @@ type todoBook struct {
 	// under it before storing (todo_pieces.go). Automatic links take it for memory changes and again for background persistence, so a
 	// removed workspace cannot gain a late stored agent. Agent snapshots do not take it. Taken before mu, never
 	// while mu is held; node calls and change notifications run after it is released.
-	writing         sync.Mutex
-	loaded          bool
-	todos           map[string]*Todo
-	activeBySession map[[2]string]string  // (machine_id, session_id) -> the open todo it works for
-	snapshotSyncing map[[2]string]bool    // (machine_id, session_id) whose title is being written
-	spacesByKey     map[string]string     // "<machine_id>/<space>" -> todo_id
-	botmux          map[string]botmuxSeen // by machine: its botmux sessions' chats and dispatches (todo_sessions.go)
+	writing             sync.Mutex
+	loaded              bool
+	todos               map[string]*Todo
+	deletedRequestGates map[string]bool
+	activeBySession     map[[2]string]string  // (machine_id, session_id) -> the open todo it works for
+	snapshotSyncing     map[[2]string]bool    // (machine_id, session_id) whose title is being written
+	spacesByKey         map[string]string     // "<machine_id>/<space>" -> todo_id
+	botmux              map[string]botmuxSeen // by machine: its botmux sessions' chats and dispatches (todo_sessions.go)
 
 	tokensMu sync.Mutex
 	tokens   map[string]*tokenSync // by machine (todo_sessions.go)
@@ -216,7 +218,9 @@ type todoBook struct {
 	// reporting are the todos whose report back to their source is waiting for the outcome (todo_source.go).
 	reportMu  sync.Mutex
 	reporting map[string]time.Time
-	runMu     sync.Mutex // one report step at a time (sourceReportNow)
+	// reportWaits are the longest answer waits found for todos still waiting (todo_source_answer.go).
+	reportWaits map[string]time.Duration
+	runMu       sync.Mutex // one report step at a time (sourceReportNow)
 
 	// importing is held across a batch of imported reminders, and imports are their links when there is no store
 	// (todo_imports.go).
@@ -292,6 +296,14 @@ func (s *Service) loadTodosLocked(ctx context.Context) error {
 	tlist, err := st.ListTodos(ctx)
 	if err != nil {
 		return err
+	}
+	if gates, ok := st.(interface {
+		DeletedRequestGates(context.Context) (map[string]bool, error)
+	}); ok {
+		b.deletedRequestGates, err = gates.DeletedRequestGates(ctx)
+		if err != nil {
+			return err
+		}
 	}
 	slist, err := st.ListAllTodoSpaces(ctx)
 	if err != nil {
@@ -457,6 +469,7 @@ func (s *Service) todosPushSoon() {
 		p.mu.Lock()
 		p.armed = false
 		p.mu.Unlock()
+		s.todoViewPushed() // every app reads the list again from here (todo_view_push.go)
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		s.event(ctx, map[string]any{"type": "todos"})
@@ -507,6 +520,12 @@ func (s *Service) removeTodo(ctx context.Context, id string) error {
 
 	s.todos.mu.Lock()
 	if cur, ok := s.todos.todos[id]; ok {
+		if cur.RequireAcceptedAfter {
+			if s.todos.deletedRequestGates == nil {
+				s.todos.deletedRequestGates = make(map[string]bool)
+			}
+			s.todos.deletedRequestGates[id] = true
+		}
 		for _, a := range cur.Agents {
 			if a.ReleasedAt == nil && a.DismissedAt == nil {
 				delete(s.todos.activeBySession, [2]string{a.MachineID, a.SessionID})
@@ -672,6 +691,7 @@ func copyTodoLocked(t *Todo) Todo {
 // that worked for it (latest released first).
 func formatTodo(t Todo) Todo {
 	out := t
+	out.Delivery = currentDelivery(t)
 	if out.Source != nil && out.Source.ReportFullReply {
 		source := *out.Source
 		source.ReportText = "" // the delivery payload is not part of the to-do list
@@ -709,6 +729,10 @@ func formatTodo(t Todo) Todo {
 	})
 	out.Agents = append(out.Agents, curr...)
 	out.Agents = append(out.Agents, past...)
+	if ownerDecisionReturned(out.Supervision) {
+		out.Supervision = out.Supervision.clone()
+		out.Supervision.State = "" // its old review stays in history; only a fresh review may ask the owner again
+	}
 	return out
 }
 
@@ -787,6 +811,20 @@ func (t Todo) Cancelled() bool {
 		return true
 	}
 	return false
+}
+
+// failedStart: its agent did not start, and it still waits on the owner. Such a to-do is stored done with its
+// start_error (#1077, failTodo), but nothing was done: the To-dos SOP keeps it open (todo-status-sop.md rule 1), a
+// retry or a plan's todo_id reopens it, and the assistant's snapshot counts it open while the app does. A cancelled one
+// is closed for good.
+func (t Todo) failedStart() bool {
+	return t.DoneAt != nil && t.StartError != "" && !t.Cancelled()
+}
+
+// closedForGood: done (by hand, by the hub's judge or a review) or cancelled, and not a failed start that still waits
+// on the owner. Only such a to-do is refused as "already done" where a failed start is taken up again.
+func (t Todo) closedForGood() bool {
+	return t.DoneAt != nil && !t.failedStart()
 }
 
 // AgentAborted reports whether the agent (machineID, sessionID) was let go, replaced or reassigned.
@@ -884,6 +922,7 @@ var errTodosUnavailable = errors.New("todos service unavailable")
 
 func (s *Service) todoRoutes() {
 	s.todoRepositoryRoutes()
+	s.workspaceNamingRoutes()
 	s.taskReviewDismissalRoutes()
 	s.todoDecisionRoutes()
 	s.todoThreadRoutes()
@@ -891,39 +930,19 @@ func (s *Service) todoRoutes() {
 	s.todoMarkRoutes()
 	s.todoRetitleRoute()
 	s.todoImportRoutes()
+	s.todoViewRoutes()
+	s.todoAskRoutes()
+	s.todoTimelineRoutes()
 	// GET /api/v1/todos: list all todos (newest created_at first), agents sorted (active first, then released); a todo
-	// waiting for the owner carries its ask (todo_ask.go), an open one nobody works on why (tasks_orphan.go)
+	// waiting for the owner carries its ask (todo_ask.go), an open one nobody works on why (tasks_orphan.go); each its
+	// view, and the list its counts (todo_view_routes.go)
 	s.handle("GET /api/v1/todos", func(w http.ResponseWriter, r *http.Request) {
-		if err := s.ensureTodosLoaded(r.Context()); err != nil {
+		list, p, err := s.todosViewed(r.Context(), true)
+		if err != nil {
 			apierr.Write(w, http.StatusServiceUnavailable, errTodosUnavailable)
 			return
 		}
-		s.todos.mu.RLock()
-		list := make([]listedTodo, 0, len(s.todos.todos))
-		for _, t := range s.todos.todos {
-			list = append(list, listedTodo{Todo: formatTodo(copyTodoLocked(t))})
-		}
-		s.todos.mu.RUnlock()
-		if err := s.listDecisionReviews(r.Context(), list); err != nil {
-			apierr.Write(w, http.StatusServiceUnavailable, errTodosUnavailable)
-			return
-		}
-		asks := s.todoAsks(r.Context()) // once the todos are let go: it reads them itself
-		links := s.briefLinksNow()      // every lineage below is read from these, not from all the links each time
-		for i := range list {
-			list[i].Todo = s.withBriefFrom(list[i].Todo, links) // what was asked and who carried it (task_brief.go)
-			if a, ok := asks[list[i].ID]; ok {
-				list[i].Ask = &a
-			}
-			if o, ok := s.orphanOf(list[i].ID); ok && list[i].DoneAt == nil {
-				list[i].Orphaned = &o
-			}
-		}
-
-		sort.Slice(list, func(i, j int) bool {
-			return list[i].CreatedAt.After(list[j].CreatedAt)
-		})
-		apierr.WriteJSON(w, map[string]any{"todos": list})
+		apierr.WriteJSON(w, todosList{Todos: list, Counts: p.counts()})
 	})
 
 	// POST /api/v1/todos: create todo {title, notes, due_at | due_date, remind_at, priority, project, kind}; kind concern
@@ -939,11 +958,12 @@ func (s *Service) todoRoutes() {
 			return
 		}
 		var in struct {
-			Title              string          `json:"title"`
-			Notes              string          `json:"notes"`
-			Project            *string         `json:"project"`
-			Kind               string          `json:"kind"`
-			RepositoryBindings json.RawMessage `json:"repository_bindings"`
+			Title                string          `json:"title"`
+			Notes                string          `json:"notes"`
+			Project              *string         `json:"project"`
+			Kind                 string          `json:"kind"`
+			RequireAcceptedAfter *bool           `json:"require_accepted_after"`
+			RepositoryBindings   json.RawMessage `json:"repository_bindings"`
 			todoPlanIn
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -961,6 +981,17 @@ func (s *Service) todoRoutes() {
 			return
 		}
 		var plan db.TodoEdit
+		if in.RequireAcceptedAfter != nil {
+			if !fullRole(r) {
+				apierr.Write(w, http.StatusForbidden, errors.New("only the owner can change request prerequisite enforcement"))
+				return
+			}
+			if kind == db.KindConcern && *in.RequireAcceptedAfter {
+				apierr.Write(w, http.StatusBadRequest, errRequestGateRoot)
+				return
+			}
+			plan.RequireAcceptedAfter = in.RequireAcceptedAfter
+		}
 		if err := in.todoPlanIn.edit(&plan); err != nil {
 			apierr.Write(w, http.StatusBadRequest, err)
 			return
@@ -970,6 +1001,9 @@ func (s *Service) todoRoutes() {
 			return
 		}
 		bindings, err := parseCreateBindings(in.RepositoryBindings)
+		if err == nil {
+			err = s.resolveCreateBindings(r.Context(), bindings) // before the store, outside todos.writing
+		}
 		if err != nil {
 			taskRepositoriesError(w, err)
 			return
@@ -1014,12 +1048,13 @@ func (s *Service) todoRoutes() {
 		}
 
 		var in struct {
-			Title   *string         `json:"title"`
-			Notes   *string         `json:"notes"`
-			Done    *bool           `json:"done"`
-			Project *string         `json:"project"`
-			PartOf  json.RawMessage `json:"part_of"`
-			After   json.RawMessage `json:"after"`
+			Title                *string         `json:"title"`
+			Notes                *string         `json:"notes"`
+			Done                 *bool           `json:"done"`
+			Project              *string         `json:"project"`
+			PartOf               json.RawMessage `json:"part_of"`
+			After                json.RawMessage `json:"after"`
+			RequireAcceptedAfter *bool           `json:"require_accepted_after"`
 			todoPlanIn
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -1027,6 +1062,11 @@ func (s *Service) todoRoutes() {
 			return
 		}
 		e := db.TodoEdit{Title: in.Title, Notes: in.Notes, Done: in.Done}
+		if in.RequireAcceptedAfter != nil && !fullRole(r) {
+			apierr.Write(w, http.StatusForbidden, errors.New("only the owner can change request prerequisite enforcement"))
+			return
+		}
+		e.RequireAcceptedAfter = in.RequireAcceptedAfter
 		if in.Title != nil {
 			t := strings.TrimSpace(*in.Title)
 			if t == "" {

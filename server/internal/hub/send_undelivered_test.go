@@ -132,6 +132,26 @@ func TestSendToAnAssistantThatCannotStartIsKept(t *testing.T) {
 	}
 }
 
+// A connection that drops before the send's result is known is kept too, with the original attempt's start time: the
+// manager must look for it in the transcript before trying again, not resend blindly and not leave it only "unknown".
+func TestSendWithUnknownOutcomeIsKeptForLandedCheck(t *testing.T) {
+	h, m, k := undeliveredHub(t, func(context.Context) error {
+		return &rpc.Error{Code: assistantwire.CodeDeliveryUnknown, Message: "connection lost", Data: json.RawMessage(`{"delivered":"unknown"}`)}
+	})
+	started := time.Now()
+	w := sendAs(h, m, `{"text":"check whether this landed","client_msg_id":"keep-unknown"}`)
+	if w.Code != http.StatusAccepted || !strings.Contains(w.Body.String(), `"delivered":"later"`) {
+		t.Fatalf("answer: %d %s", w.Code, w.Body)
+	}
+	kept := k.keeps()
+	if len(kept) != 1 || kept[0].Code != assistantwire.CodeDeliveryUnknown {
+		t.Fatalf("kept %+v, want one delivery_unknown", kept)
+	}
+	if kept[0].TriedAt.IsZero() || kept[0].TriedAt.Before(started) || time.Since(kept[0].TriedAt) > time.Minute {
+		t.Fatalf("first attempt started at %s, want a recent start not before %s", kept[0].TriedAt, started)
+	}
+}
+
 // Older owner messages to the conversation are kept: the manager refuses to prepare a newer one, and the hub keeps it
 // behind them without typing anything.
 func TestSendBehindKeptMessagesIsKeptToo(t *testing.T) {
@@ -145,6 +165,19 @@ func TestSendBehindKeptMessagesIsKeptToo(t *testing.T) {
 	}
 	if kept := k.keeps(); len(kept) != 1 || kept[0].Code != assistantwire.CodeUndeliveredAhead || tries.Load() != 0 {
 		t.Fatalf("kept %+v, tries %d", kept, tries.Load())
+	}
+}
+
+func TestKeepUndeliveredCarriesAuthenticatedDeviceCredential(t *testing.T) {
+	h, m, k := undeliveredHub(t, func(context.Context) error { return errors.New("machine unavailable") })
+	ctx := context.WithValue(context.Background(), principalKey{}, principal{ID: "dev_sender", Role: roleFull})
+	status, body, ok := h.keepUndelivered(ctx, m, "s1",
+		map[string]any{"client_msg_id": "kept", "text": "hello", "credential_id": "untrusted"}, "machine_offline", "")
+	if !ok || status != http.StatusAccepted {
+		t.Fatalf("keep: %d %s", status, body)
+	}
+	if kept := k.keeps(); len(kept) != 1 || kept[0].CredentialID != "dev_sender" || !kept[0].Human {
+		t.Fatalf("kept: %+v", kept)
 	}
 }
 
