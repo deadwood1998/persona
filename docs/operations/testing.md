@@ -7,7 +7,7 @@ cd server && go test ./... && go vet ./...                    # server
 SIM=$(scripts/app/sim-boot.sh "Persona Tests <issue number>")              # your own simulator, slim boot ("Simulators")
 cd apple && xcodegen generate -q && xcodebuild -project Persona.xcodeproj -scheme Persona \
   -destination "id=$SIM" test   # iOS unit tests (ChatStore, ScreenParser, phone tool registry)
-./scripts/app/sim.sh [-openSession <machine>/<id>]                    # run in simulator, pair automatically to the real hub
+./scripts/app/sim.sh [--with-watch] [-openSession <machine>/<id>]     # run in simulator, pair automatically to the real hub ("Development builds")
 cd apple/Packages/PersonaKit && swift test                             # PersonaKit unit tests: directly on Mac, no App build or simulator
 python3 -B scripts/test/test_sim_boot.py                               # sim-boot.sh (fake xcrun / simslim, no simulator)
 n=0 failed=""; for f in $(find scripts -name 'test_*.py' -not -path '*/node_modules/*' | sort); do grep -q unittest "$f" || continue; n=$((n + 1)); (cd "$(dirname "$f")" && python3 -B -m unittest -q "$(basename "$f" .py)") || failed="$failed $f"; done; echo "$n suites, failed:${failed:- none}"; [ -z "$failed" ]   # all Python suites in scripts/, like CI (it skips files that never mention unittest); any failure exits nonzero
@@ -225,6 +225,102 @@ The trade-off: binaries and stack traces then name source files by module path
 (`github.com/nwverse/persona/server/...`) instead of the local directory, so a debugger (Delve, an IDE) needs a
 source path mapping to open them. Release builds already use `-trimpath` (`docs/operations/release.md`).
 
+## Heavy build slots
+
+Many worktrees share one machine, and xcodebuild, Gradle or a large `go test` started together slow each other down
+until tests time out. `scripts/heavy_slot.py` gives each kind of heavy build a few machine-wide slots, so they queue
+instead (#10714):
+
+```sh
+python3 scripts/heavy_slot.py run --kind xcode|gradle|go|web -- <command> [<argument>...]
+python3 scripts/heavy_slot.py status    # every kind's slots and who holds them
+```
+
+- **Who takes one**: `scripts/app/sim.sh` for its xcodebuild (`xcode`), `scripts/app/android.sh` for every Gradle build
+  (`gradle`), and `scripts/check-fast.sh` for each `go test` / `go build` (`go`) and vitest (`web`) step. check-fast
+  takes the slot outside the step's timeout, so time in the queue is not a hung check; a wait past the slot timeout is
+  a TIMEOUT that says the check never ran. While a step waits, check-fast prints the helper's waiting line on stderr
+  at once, and its line when the slot comes free (`check-fast: go test ./...: waiting for a go slot (3 busy, up to
+  45m)`); the summary counts the wait apart from the check's own time (`PASS     server go test ./... (95s, plus 140s
+  waiting for a go slot)`). With `PERSONA_HEAVY_SLOTS=0`, or without `python3`, check-fast and `android.sh` run the
+  command directly, without the helper.
+- **A slot** is an exclusive `fcntl.flock` on a lock file in a per-user cache directory
+  (`~/Library/Caches/persona/slots` on macOS, else `$XDG_CACHE_HOME/persona/slots` or `~/.cache/persona/slots`;
+  `PERSONA_HEAVY_SLOT_DIR` moves it). The helper holds the lock and runs the command as its child. The lock is not
+  inherited, so a daemon the build leaves running (Gradle's, Xcode's build service) never keeps a slot, and a helper
+  that dies, even by SIGKILL, frees its own.
+- **How many**: the core count divided by 7 for `xcode` and `gradle` and by 4 for `go` and `web`, at least 1 (14 cores:
+  2, 2, 3, 3). `PERSONA_HEAVY_SLOTS_<KIND>=<n>` sets one kind's count (`PERSONA_HEAVY_SLOTS_GO=1`; `0` is no limit).
+- **Waiting**: one line on stderr when it starts to wait and one when it gets a slot. After `PERSONA_HEAVY_SLOT_TIMEOUT`
+  seconds (default 2700, 45 minutes) it gives up with one line and exit 124, without running the command.
+- **Nested calls never wait**: the command's environment names the slot it holds (`PERSONA_HEAVY_SLOT_HELD`). A call
+  of the same kind inside it runs at once; one of another kind takes a free slot or runs without one. Nothing waits
+  for a slot while it holds one, so slots cannot deadlock.
+- **Signals and exit status**: TERM, HUP, INT, QUIT, USR1 and USR2 sent to the helper reach the command, a signal the
+  caller ignores stays ignored, and the helper exits with the command's status (dying by the same signal when it did).
+- **Off**: `PERSONA_HEAVY_SLOTS=0` makes the helper exec the command, which then runs exactly as without it: the same
+  process, stdio, environment and exit status. On Windows, which has no `fcntl`, it says so in one line and runs the
+  command without a slot.
+
+CI does not set `PERSONA_HEAVY_SLOTS=0`. No hosted lane (`.github/workflows/`, `scripts/ci/`) and none of the PR or
+main watchers' checks run a script that takes a slot: they run their commands directly, so they never queue behind
+local builds. A runner has one job, where a slot would only make that job's own steps wait for each other, so a lane
+or a watcher step that starts to run one of these scripts sets `PERSONA_HEAVY_SLOTS=0`;
+`scripts/test/test_heavy_slot.py` fails until it does. It reads the CI lanes, `scripts/operations/` (the watchers'
+scripts, example configs and services) and both watcher skills under `.claude/skills/` (their scripts and `SKILL.md`).
+The `xcode-slot` runner that `scripts/release/release.sh` and `sim.sh`'s Rust core build use when it is installed
+(`PERSONA_XCODE_RUNNER`, `docs/operations/release.md`) is a separate lock.
+
+## Development builds
+
+`scripts/app/sim.sh` builds for a development loop, not for shipping (#10713). Nothing it changes reaches CI
+(`scripts/ci/apple.sh`), release (`scripts/release/release.sh`) or the UI tests (`scripts/app/ui-test.sh`):
+
+- **No watch app or share extension.** It generates the project with `PERSONA_LEAN_DEV_BUILD=YES`, so
+  `apple/lean-dev-build.yml` takes the watch app (with its widgets and the watchOS `PersonaWire`) and the share extension
+  out of the iPhone app's dependencies, which `apple/watch-and-share.yml` adds; `Shared/` is then compiled for the iPhone
+  app and its other extensions only. The app needs neither: WatchConnectivity finds no watch app, and Share › Persona is
+  not offered. `--with-watch` builds and embeds both, for anything on the watch or in the share sheet
+  (`./scripts/app/sim.sh --with-watch -openSession <machine>/<id>`); a later build without it first takes them out of the
+  app again, since Xcode leaves in place the watch app it no longer embeds. Nothing else sets the switch, so
+  `xcodegen generate` alone builds the whole project, and every other script that generates it (CI, release, the UI,
+  share-sheet and performance tests) clears it first, whatever the shell exported; `scripts/test/test_apple_dev_build.py`
+  finds them by searching. After `sim.sh`, the project Xcode opens is the lean one until the next `xcodegen generate`,
+  and its Rust core has the simulator slice only (the last item).
+- **A lean build says when it skipped what the branch changed.** The watch app compiles all of `apple/Shared/` for
+  watchOS 10 and the share extension compiles it as an app extension, and no hosted CI runs on a PR, so with lean builds
+  alone a change that breaks either would first fail on `main`. When the branch, against its merge base with `origin/main` and
+  with uncommitted and new files counted, changes `apple/Shared/`, `apple/PersonaWatch/`, `apple/PersonaWatchWidgets/`
+  or `apple/PersonaShare/`, `sim.sh` prints one line naming the check (`scripts/app/lean-build-note.sh`):
+  `./scripts/app/sim.sh --with-watch` when `Shared/` or the share extension changed (the extension has no scheme of its
+  own), and for the watch alone
+  `xcodebuild -project apple/Persona.xcodeproj -scheme PersonaWatch -destination 'generic/platform=watchOS Simulator' -derivedDataPath build/DerivedData build`,
+  which works on the lean project too (after `eval "$(python3 scripts/persona_config.py env)"`, as any manual
+  `xcodebuild`).
+- **The commit stamp is Release only.** "Stamp the commit" (`apple/project.yml`, the iPhone and Vision apps) does nothing
+  in Debug: a Debug build's Settings › About › Build says Unknown, its Developing Persona package
+  (`docs/operations/developing-persona.md`) has an empty `commit`, and a build with nothing changed writes no Info.plist
+  and signs nothing again, unless the opt-in Siri calls (`apple/siri-calls.yml`) or Meta glasses
+  (`apple/meta-wearables.yml`) include is on: their build phases rewrite the built Info.plist on every build, so the app
+  is signed again each time. Every Release build, and so every TestFlight build, is stamped as before; a Debug build that
+  must name its commit (the README's captures, `scripts/assets/make_readme_assets.py`) passes the build setting
+  `PERSONA_STAMP_COMMIT=YES`.
+- **Generated files are written only when they change.** `scripts/persona_config.py xcconfig` leaves `apple/Config.xcconfig`
+  and the opt-in entitlements file alone when their content is the same: a new modification time alone makes Xcode take
+  every target's settings, or the app's signature, as changed.
+- **The Rust core's simulator slice, shared between worktrees.** `native/app-core/scripts/build-apple.sh --simulator`
+  builds only the slice the simulator runs; without it (release, CI, `swift test` on the Mac) it builds the device,
+  simulator and macOS slices. A built framework is kept in `~/Library/Caches/persona/app-core/<key>/`, keyed by the
+  inputs' content and their paths in the checkout (never the checkout's own path), the Mac's architecture, the Apple SDKs
+  and the caller's `RUSTFLAGS` and deployment targets: another worktree at the same Rust inputs copies it instead of
+  building, and a full entry also serves a simulator request. The newest three keys stay (`PERSONA_APP_CORE_CACHE_KEEP`);
+  `PERSONA_APP_CORE_CACHE=<directory>` moves the cache and `PERSONA_APP_CORE_CACHE=0` turns it off. The cache is best
+  effort: an entry that cannot be read is built again, and a cache that cannot be written keeps the framework in the
+  worktree only, each with one line on stderr. **Before a phone or "My Mac (Designed for iPad)" build in
+  Xcode after `sim.sh`, run `native/app-core/scripts/build-apple.sh` with no flag:** a simulator-only framework has no
+  device slice, so Xcode stops with "no library for this platform was found", which looks like a broken build. The
+  script prints the same reminder whenever it leaves the simulator slice only.
+
 ## Fast local checks (`scripts/check-fast.sh`, #2849)
 
 Runs only relevant second-scale checks based on git changes, with independent checks in parallel; useful before committing:
@@ -243,8 +339,8 @@ Path mapping:
 
 | Changed path | Checks |
 | --- | --- |
-| `web/**` | `npm ci` (only if `node_modules` missing or `package.json` / `package-lock.json` changed) + `npm run check:deps` (fails, naming the packages and saying to run `npm ci`, when an installed direct dependency isn't the version `package-lock.json` pins: a lock bump merged from `main` leaves the old packages in place, #4776) + `npm run typecheck` (incremental, state kept in web's `node_modules/.cache/tsc/`: a second run only checks what changed, and a type error fails every run) + the tests `python3 scripts/ci/paths.py --web-plan` picks (#10619, see "Web tests a change reaches" below): `npx vitest related --run` when only `web/src` changed, else `npm test`, the whole suite |
-| Files outside `web/` that `web/src` and its tests read (`spec/fixtures/<case>/…`, `schema/extension/…`, `scripts/mock/…`; `python3 scripts/ci/paths.py --web-inputs` lists them) | In addition to other checks in this table, the `web/**` checks, with the related tests. The list is derived, never written down: the same scan gives CI's web lane its inputs outside `web/` |
+| `web/**` | `npm ci` (only if `node_modules` missing or `package.json` / `package-lock.json` changed) + `npm run check:deps` (fails, naming the packages and saying to run `npm ci`, when an installed direct dependency isn't the version `package-lock.json` pins: a lock bump merged from `main` leaves the old packages in place, #4776) + `npm run typecheck` (incremental, state kept in web's `node_modules/.cache/tsc/`: a second run only checks what changed, and a type error fails every run) + the tests `python3 scripts/ci/paths.py --web-plan` picks (#10619, see "Web tests a change reaches" below): `npx vitest related --run` from the changed files and every test that reads files from disk; `npm test`, the whole suite, instead when a change reaches every test: a file in `web/` outside `web/src`, `web/src/lib/store.ts`, `web/src/lib/api.ts`, `web/src/ui/atoms.tsx`, `web/src/i18n/**`, a `web/src` module the Vite configs import, or anything the vitest setup files reach |
+| Files outside `web/` that `web/src` and its tests read (`spec/fixtures/<case>/…`, `schema/extension/…`, `scripts/mock/…`; `python3 scripts/ci/paths.py --web-inputs` lists them) | In addition to other checks in this table, the `web/**` checks, with the related tests (the whole suite for a file the vitest setup files read). The list is derived, never written down: the same scan gives CI's web lane its inputs outside `web/` |
 | `integrations/<pkg>/**` | Package `node --test test/*.test.{js,mjs}` (skip packages without tests) |
 | `site/**` | `node --test site/worker.test.mjs` |
 | `sdk/ts/**` | `bun test` (skip with reason if bun absent) |
@@ -261,21 +357,25 @@ Path mapping:
 | `schema/wire/**`, `spec/fixtures/**`, `scripts/gen/extension_schema.py`, `scripts/test/test_extension_schema.py` | Also `scripts/test/test_wire_schema.py`: every sample the shared fixtures keep for a wire schema holds to it at any depth, and the generated wire types are current (it imports the extension test's validator). CI's guards step always runs it |
 | `spec/fixtures/todo-detail/**`, `spec/fixtures/todo-layout/**`, `spec/fixtures/todo-view/README.md`, `spec/fixtures/agent-names/**`, `schema/wire/todo-view.schema.json`, `server/internal/assistant/todos.go`, `server/internal/assistant/todo_ask.go`, `scripts/test/test_wire_schema.py`, `scripts/test/test_extension_schema.py` | Also `scripts/test/test_todo_fixtures.py`: the to-do page and window fixtures hold to their READMEs' rules, the view schema, the todo-view line keys, the agent names and the fields the hub writes on a listed to-do (it imports the wire and extension schema tests) |
 | `scripts/test/test_external_service_refs.py`, `scripts/{gen,test}/sdk_bundle*` | The scripts' own tests |
-| `scripts/**` | Select second-scale privacy / PR / schema / refs / bundle / i18n checks by path; when uncertain run PR and schema. Also run changed `scripts/<subdirectory>/test_*.py`, and `test_<name>.py` for changed `<name>.py` / `<name>.sh` scripts (`-`→`_`; `.sh` also checks `test_<name>_sh.py`), from the test directory like CI (#3968). `scripts/hooks/**` also runs `scripts/test/test_privacy_check.py` (it runs the hooks in its temp repositories); `scripts/privacy_check.py` also runs `scripts/release/test_check_bundle_privacy.py` (it imports `privacy_check`); `scripts/ci/changed_ratchets.py`, `scripts/ci/sleep_ratchet.py` and `scripts/ci/web_font_ratchet.py` also run `scripts/test/test_merge_pr_sh.py` (it copies them into its temp repositories, where `merge-pr.sh` runs them), and the two ratchets `scripts/ci/test_changed_ratchets.py` (it imports them) |
+| `scripts/**` | Select second-scale privacy / PR / schema / refs / bundle / i18n checks by path; when uncertain run PR and schema. Also run changed `scripts/<subdirectory>/test_*.py`, and `test_<name>.py` for changed `<name>.py` / `<name>.sh` scripts (`-`→`_`; `.sh` also checks `test_<name>_sh.py`), from the test directory like CI (#3968). `scripts/hooks/**` also runs `scripts/test/test_privacy_check.py` and `scripts/test/test_check_deno_adapter_sh.py` (they run the hooks in their temp repositories; the latter also for `scripts/gen/deno_adapter.sh`); `scripts/privacy_check.py` also runs `scripts/release/test_check_bundle_privacy.py` (it imports `privacy_check`) and `scripts/test/test_merge_pr_sh.py`; `scripts/operations/pr_watch_merge.py`, `scripts/ci/changed_ratchets.py`, `scripts/ci/sleep_ratchet.py` and `scripts/ci/web_font_ratchet.py` also run `scripts/test/test_merge_pr_sh.py` (it copies the scripts into its temp repositories, where `merge-pr.sh` runs them, and checks the watcher's merge lock), and the two ratchets `scripts/ci/test_changed_ratchets.py` (it imports them); `scripts/test/go_trimpath.sh` also runs `scripts/ci/test_ci.py` and `scripts/test/test_check_fast_inputs.py` (they run `scripts/ci/server.sh` and `scripts/test/check-fast.sh`, whose `GOFLAGS` it composes); `scripts/heavy_slot.py` also runs `scripts/test/test_check_fast_inputs.py`; `check-fast.sh` and `scripts/test/test_check_fast.py` also run `scripts/test/test_check_fast_guards.py` and `scripts/test/test_check_fast_inputs.py` (check-fast's tests are three files, split so each stays well under the per-suite limit; the other two import `test_check_fast.py`'s fixtures); `scripts/release/debug_switches.txt`, `scripts/release/debug_switches.py` and `scripts/release/release.sh` also run `scripts/release/test_debug_switches.py`, `scripts/release/test_release_debug_guard.py` and `scripts/test/test_apple_release_switch_names.py` |
+| `spec/tokens/**`, `apple/Shared/Design/**`, `android/core/designsystem/src/main/kotlin/persona/core/designsystem/Tokens.kt` | `scripts/assets/test_gen_tokens.py`: the token sources against the iOS values and the committed Android `Tokens.kt` |
+| `spec/icons/**`, `apple/Shared/Design/Icons.swift`, `android/core/designsystem/src/main/kotlin/persona/core/designsystem/icons/**` | `scripts/assets/test_gen_icon_meanings.py`: the icon meanings against `Theme.Icon`, the Phosphor glyphs and `PersonaIcons.kt` |
 | `docs/**`, any `*.md` | `scripts/test/test_doc_paths.py`, `scripts/test/test_doc_go_paths.py` (quoted paths and CLAUDE.md documentation index; test_doc_paths.py also fails a table that a blank line splits), `scripts/test/test_doc_sections.py` (section names quoted after a doc path match a heading, a **bold** label, an `<a id>` or a list item's opening phrase of that doc; `scripts/test/doc_sections_known.txt` lists the ones left for now and only shrinks), `scripts/test/test_doc_wire.py` (protocol.md and extensions.md list every WebSocket type, feature flag, extension point and manifest field the code has) |
 | `server/internal/{proto,hub,extension}/**`, `schema/extension/manifest.schema.json` | Also `scripts/test/test_doc_wire.py`: these hold the code side of the lists it compares with the docs |
 | `server/**`, `web/src/**`, `web/e2e/**`, `scripts/**`, `sdk/**`, `apple/**`, `android/**`, `integrations/**`, `spec/**`, `schema/**` | Also `scripts/test/test_doc_sections.py`: most of the section names it checks are in code comments there |
 | `apple/**` | `scripts/test/test_apple_l10n.py` (complete String Catalogs and Swift Chinese literals included in catalogs) and `scripts/test/test_apple_no_callkit.py` (no CallKit import or link setting; also run for `scripts/persona_config.py`); iOS / macOS builds and tests need a Mac and are reported as skipped |
+| `apple/project.yml`, `apple/lean-dev-build.yml`, `apple/watch-and-share.yml`, `scripts/app/sim.sh`, `scripts/app/ui-test.sh`, `scripts/release/release.sh`, `scripts/ci/apple.sh` | Also `scripts/test/test_apple_dev_build.py`: the switch that leaves the watch app and the share extension out of a development build, that only `sim.sh` sets it and the others clear it, and the Release-only commit stamp ("Development builds"; the project checks need xcodegen) |
+| `native/app-core/scripts/build-apple.sh` | `scripts/test/test_app_core_apple_build.py`: the simulator-only build and the XCFramework cache shared between worktrees, with fake cargo and Xcode tools ("Development builds") |
 | `deploy/docker/**`, `docs/operations/docker.md`, root `Dockerfile` | `scripts/test/test_docker_entrypoint.py` (also checks root `Dockerfile`’s `EXPOSE`) |
 | Other paths | No code checks; list unmapped paths individually |
 
-Any changes always run `scripts/privacy_check.py` first: local-only, no network, a few seconds. Every check has a timeout (npm ci 600 s, vitest 300 s, one go test group 300 s, others 120 s; override with `CHECK_FAST_TIMEOUT_NPM_CI` / `CHECK_FAST_TIMEOUT_WEB_TEST` / `CHECK_FAST_TIMEOUT_GO_TEST` / `CHECK_FAST_TIMEOUT_OTHER`). Success/failure/timeout each prints a result and duration; the final summary lists passed/skipped (with reasons)/failed/timed-out checks and log directory. Exit: 0 if all pass or none needed; 1 for failure; 124 for timeout without failures (timeouts aren't passes; run full checks to confirm). Ctrl-C, SIGTERM and SIGHUP, sent to the script or to its whole process group (a closed terminal or tmux pane), stop every running check (and its child processes) before exiting with 130, 143 or 129, and keep the log directory. Missing toolchains skip relevant checks with reasons by default; under `--all`, missing core tools (node ≥ 22, go, python3) fail; bun is always optional. Requires GNU `timeout` (coreutils on macOS).
+Any changes always run `scripts/privacy_check.py` first: local-only, no network, a few seconds. Every check has a timeout (npm ci 600 s, vitest 300 s, one go test group 300 s, others 120 s; override with `CHECK_FAST_TIMEOUT_NPM_CI` / `CHECK_FAST_TIMEOUT_WEB_TEST` / `CHECK_FAST_TIMEOUT_GO_TEST` / `CHECK_FAST_TIMEOUT_OTHER`). The go and vitest steps first wait for a heavy build slot, outside their timeout ("Heavy build slots" above). Success/failure/timeout each prints a result and duration; the final summary lists passed/skipped (with reasons)/failed/timed-out checks and log directory. Exit: 0 if all pass or none needed; 1 for failure; 124 for timeout without failures (timeouts aren't passes; run full checks to confirm). Ctrl-C, SIGTERM and SIGHUP, sent to the script or to its whole process group (a closed terminal or tmux pane), stop every running check (and its child processes) before exiting with 130, 143 or 129, and keep the log directory. Missing toolchains skip relevant checks with reasons by default; under `--all`, missing core tools (node ≥ 22, go, python3) fail; bun is always optional. Requires GNU `timeout` (coreutils on macOS).
 
 **Web tests a change reaches** (#10619). In diff mode the web check runs `npx vitest related --run` from the changed files, so a change to one view runs the tests whose imports reach it (about 56 for `web/src/views/chat/ChatView.tsx`) instead of all ~1,360 test files. `python3 scripts/ci/paths.py --web-plan` makes the plan from one scan of `web/src` and every web test, done at run time, nothing listed by hand:
 
-- Every related run also includes each test that reads files from disk (`fs`, `readFileSync`, `import.meta.glob`, a `?raw` or other query import; about 85): vitest related follows only imports whose id is a file on disk, so it never sees what they read. So does each test that builds or serves through a Vite config (it imports `vite` or `vitest/node`): `web/scripts/public-share-build.test.mjs` builds the public viewer, whose config reads `web/src/styles.css` with `readFileSync`. A `web/src` module that reads through `fs` brings the tests that import it, and a module that reads through Vite joins when a file it names changes (`web/src/lib/html-runtime/host.ts` for its `frame.js`).
-- The whole suite (`npm test`) runs instead for a change to `web/src/lib/store.ts`, `web/src/lib/api.ts`, `web/src/ui/atoms.tsx` or `web/src/i18n/` (most tests import them: about 825, 1,040, 930 and 1,190), to a `web/src` module the Vite configs import, or to anything in `web/` outside `web/src` (the Vite and TypeScript configs, `package.json`, `package-lock.json`, `scripts/`, `e2e/`), and always with `--all`. Without python3, or when the scan fails, a `web/` change runs the whole suite.
-- Files outside `web/`: every path a scanned file names relative to itself that leads out of `web/` (`"../../../spec/fixtures/forward/cases.json"`, `` new URL(`../../../schema/extension/examples/View.v8-${name}.json`, import.meta.url) ``, `join(__dirname, "..", "..", "..", "spec", …)`) is an input. A file counts as itself; a directory, a glob or a path with a `${…}` part as everything under its literal part; a JSON Schema also brings the files its `$ref`s name. A path built from the working directory or from a variable root is not seen. `python3 scripts/ci/paths.py --web-inputs` prints the list; CI's web lane takes the same one, so the two agree by construction. `scripts/test/test_check_fast.py` holds the scan to a sample tree in each form and to the real reads.
+- Every related run also includes each test that reads files from disk (`fs`, `node:fs`, `fs/promises`, `node:fs/promises`, `readFileSync`, `import.meta.glob`, a `?raw` or other query import; about 85): vitest related follows only imports whose id is a file on disk, so it never sees what they read. So does each test that builds or serves through a Vite config (it imports `vite` or `vitest/node`): `web/scripts/public-share-build.test.mjs` builds the public viewer, whose config reads `web/src/styles.css` with `readFileSync`. A `web/src` module that reads through `fs` brings the tests that import it, and a module that reads through Vite joins when a file it names changes (`web/src/lib/html-runtime/host.ts` for its `frame.js`).
+- The whole suite (`npm test`) runs instead for a change to `web/src/lib/store.ts`, `web/src/lib/api.ts`, `web/src/ui/atoms.tsx` or `web/src/i18n/` (most tests import them: about 825, 1,040, 930 and 1,190), to a `web/src` module the Vite configs import, to anything the vitest setup files reach, or to anything in `web/` outside `web/src` (the Vite and TypeScript configs, `package.json`, `package-lock.json`, `scripts/`, `e2e/`), and always with `--all`. The setup files are the `setupFiles` and `globalSetup` the Vite configs name; what they reach is each of them, what it reads, and each module it imports, followed to the end (`web/src/i18n/test-setup.ts` loads `web/src/admin/catalog.ts`). Every test runs them first, but vitest related follows only a test's own imports. Without python3, or when the scan fails, a `web/` change runs the whole suite.
+- Files outside `web/`: every path a scanned file names relative to itself that leads out of `web/` (`"../../../spec/fixtures/forward/cases.json"`, `` new URL(`../../../schema/extension/examples/View.v8-${name}.json`, import.meta.url) ``, `join(__dirname, "..", "..", "..", "spec", …)`) is an input. A file counts as itself; a directory, a glob or a path with a `${…}` part as everything under its literal part; a JSON Schema also brings the files its `$ref`s name. A path built from the working directory or from a variable root is not seen. `python3 scripts/ci/paths.py --web-inputs` prints the list; CI's web lane takes the same one, so the two agree by construction. `scripts/test/test_check_fast_inputs.py` holds the scan to a sample tree in each form and to the real reads.
 
 Not covered:
 
@@ -292,11 +392,12 @@ it isn't in `PersonaTests`; the Apple CI script runs its SwiftPM tests separatel
 - Moved types and App-used members must be `public` (structs need `public init`); App files using them add `import PersonaKit`. Package tests still use `@testable import PersonaKit`.
 - Assertions needing App types (views, `FilePaths`) stay in `PersonaTests`, also adding `import PersonaKit`.
 - Package code must build with Foundation only: no SwiftUI / UIKit imports, App `Theme` or `AppModel`. Design-system source checks (`TokenRatchetTests`, etc.) don't scan it.
-- On a Mac still on macOS 15 the test bundle builds but does not load (`Symbol not found … built for macOS 26.0 which is newer than running OS`: the package targets macOS 26). Build it for the running system in a separate build folder: `swift test --scratch-path /tmp/personakit-macos15 -Xswiftc -target -Xswiftc arm64-apple-macosx15.0`.
+- The package declares macOS 15, so its test bundle also loads on a macOS 15 host without a target override. To check that deployment target from a newer Apple-silicon Mac, use a separate build folder: `swift test --scratch-path /tmp/personakit-macos15 -Xswiftc -target -Xswiftc arm64-apple-macosx15.0` (use `x86_64-apple-macosx15.0` on Intel). `scripts/test/test_apple_ci.py` guards the macOS floors of all tracked local Swift packages.
 
 **PersonaCore** (`apple/Packages/PersonaCore`, #6871): the iOS-only binding of the shared Rust continuity core. Run
 `native/app-core/scripts/build-apple.sh` before XcodeGen / package resolution, then `xcrun swift test --package-path
-apple/Packages/PersonaCore -Xswiftc -warnings-as-errors`. The XCFramework and Cargo output stay ignored; generated Swift
+apple/Packages/PersonaCore -Xswiftc -warnings-as-errors` (after `sim.sh`, whose `--simulator` build has no macOS slice,
+the builder without it adds the other slices; "Development builds"). The XCFramework and Cargo output stay ignored; generated Swift
 codecs are committed and `cargo run -p persona-core-typegen -- --check` checks both Swift and Kotlin. The package uses
 Swift 6 strict concurrency. The real-C replay and native `ChatStore` comparison are in
 `PersonaTests/PersonaCoreContinuityTests.swift`; the package and fixtures alone are not a physical-device performance,
@@ -364,6 +465,7 @@ xcrun simctl launch --terminate-running-process $SIM <bundle id> \
 - Held-push screenshots (#7782): start the mock with `MOCK_LN=1` so `GET /api/v1/push/ln-mode` returns enabled and `GET /api/v1/push/intercepts` returns synthetic rows: two P1 and one P2 of the local day (the first P1 links the /orders investigation to-do through `todo_id`, a source the clients follow; the others have no source) and one P1 of yesterday that clients leave out. Today's rows are hours before the request, or just after midnight when that was another day (wall-clock time, so a DST transition keeps them today), so a mock left running still has them. `GET /mock/ln?on=0|1` switches the mode while the mock runs and `/mock/reset` puts back how it started; the rows are there with the mode off too, as on the hub, and clients don't read them then. Then add `-openPushIntercepts YES` to the launch command. The switch opens the held-push tray once and is removed from `UserDefaults`; no real push content is used.
   UI suite `PushInterceptsUITests` (`TEST_RUNNER_PERSONA_MOCK_HUB`; it switches the mode itself and puts it back) taps the entry, checks P1's rows with P2 folded, checks the tray opens above the action bar's row at the bar's width with Needs You and In Progress on the entry's row (`midY` within 0.5 pt) and that Needs You's tray takes its place, one at a time (#8223), opens P2, follows the linked row to its to-do, and checks there is no entry with the mode off, light and dark; `TEST_RUNNER_PERSONA_SHOTS=<dir>` keeps `held-pushes-<light|dark>-<entry|tray|p2-folded|p2-open|source|ln-off>.png` (`p2-folded` when the folded P2 header is below the tray's fold).
 - Main-chat model choice screenshots (#6542, #7857): start the mock with `MOCK_MODEL_PICK=1` so `features` carries `assistant_model_pick` and the main conversation's launchers (`?purpose=assistant`) list Claude Code (Opus on the Main Chat default, with Fable, Sonnet 5.5 and Haiku 5.5 among its models), a launcher that fixes its own model, a direct API and Codex, plus unavailable entries; `PUT`/`DELETE /api/v1/assistant/conversations/<id>/model` keep or drop the conversation's own pick; `GET /mock/model_pick` lists every PUT and DELETE since the mock started, and `?reset=1` also drops every conversation's pick (the list is kept). UI suite `AssistantModelPickerUITests` (`TEST_RUNNER_PERSONA_MOCK_HUB`, `TEST_RUNNER_PERSONA_SHOTS=<dir>`) opens the main conversation, opens the composer menu's Change Model… sheet, picks Haiku and checks the button renames and the hub records the PUT, light and dark; it keeps `model-picker-<1-entry|2-menu|3-sheet|4-picked>-<light|dark>.png`. Without `MOCK_MODEL_PICK` (or `PERSONA_MOCK_HUB`) it skips rather than fails.
+- Main-chat Codex Speed (#10244): with the same `MOCK_MODEL_PICK=1`, `GET /mock/model_pick?reset=1&speed=idle|working|no-tier|ack|pending|refusal|timeout` makes the main conversation a Codex chat with its own model pick. Every case except `no-tier` advertises Standard and Fast and starts acknowledged at Standard. `ack` answers a speed POST without changing the session until `GET /mock/model_pick?speed_ack=1`; `pending` holds the POST itself for up to 15 seconds so the menu can show why its actions are disabled, and the same acknowledgment releases it. `refusal` returns 409 and `timeout` an immediate 504 with `code: "timeout"`, neither changing the acknowledged tier. `speed_requests` in the same response records each fixture `/modes` call as `{method, path, body}`, including an effort change; a reset without `speed` restores the ordinary Claude model-picker fixture and clears that log. Summary rows omit both speed fields as the hub's do, exercising detail preservation. `AssistantModelPickerUITests` covers Standard → Fast → Standard, working/effort independence, no tiers, pending and delayed acknowledgment and both failures; `TEST_RUNNER_PERSONA_SHOTS=<dir>` keeps `model-picker-speed-<idle|working>-<light|dark>.png` and, at the largest accessibility text size, `model-picker-speed-<idle|working>-largest-<light|dark>.png`.
 - Dark: `xcrun simctl ui $SIM appearance dark`.
 - A background task that reports back after a newer answer (#9140): `MOCK_WAKE_AFTER_ANSWER=1` makes Persona's main conversation one where three background checks were started, another question was asked and answered in full, and each check's notification then woke the assistant (three `wake` notices with no message of the user's). The answer to the second question stays on screen and each woken turn follows under its notice, with its own work line.
 - `MOCK_TOPBAR=1|3|long`: sub-Agents of the weather-widget session for the chat header's status line (`docs/archive/apple/plan-chat-topbar.md`): `1` one running and one ended (`-openAgent tb1` reads it, with a conversation); `3` three running (`tb3` newest); `long` a sub-Agent title of about 40 characters and a very long tab name (truncation). Add `-holdChromeOpen YES` so the header does not fold before the screenshot.
@@ -589,6 +691,29 @@ xcrun simctl launch --terminate-running-process $SIM <bundle id> \
   Avatars: Tom's f3 loads, weather assistant returns 404 (initial fallback), others none.
   Mentions: f2/f3 members (`GET …/members`, Tom/Mia avatars, Ajie's group nickname "Jay"); sends/replies with `mentions` store `@name` text as `at` segments.
   Thread group (#1087): `MOCK_LARK_TOPIC=1`, `-tab mail -openInboxItem lark:f4:405` opens Release group (also in Messages): bot posts three topics two minutes apart (individual cards), long >320 pt collapsible card, own topic, linked topic, 0/1/2/6 replies, recalled topics (gateway retained and unretained), edited topic (latest reply recalled), for the "Fengling Yueying" style. Like gateway, replies return topic first then latest `limit`. With `MOCK_LARK=1` as well (the perf `inbox` suite), the Feishu page lists Release too and its threads come from the topic group.
+
+### Mock hub domains (`scripts/mock/mock_domains.py`, #11016)
+
+`mock_hub.py` is one long file that most mock changes edit, so a new made-up area of the hub goes into a module of its own
+(a *domain*) instead. The module has a `register(d)` function and gets one line in `DOMAINS` in `scripts/mock/mock_domains.py`;
+`mock_hub.py` does not change. `register(d)` declares what the domain needs:
+
+- `d.route("GET" | "POST" | "PUT" | "PATCH" | "DELETE" | [...], r"<path regex>", handler)`: `handler(h, req)` answers with
+  `h.send_json(obj, status)`; `req` has `method`, `path`, `query`, `match` (the regex's groups), `body` and `json()`. Routes run
+  after the token check (and a GET's hit count) and before the route chains of `H.do_GET` and `H.do_POST`; a handler that returns
+  `False` hands the request on.
+- `d.ws("<message type>", handler)` and `d.on_ws_close(handler)`: `handler(ws, msg)` and `handler(ws)`, where `ws` has `connection`,
+  `send(obj)`, `client` (its role and declared features) and `asked`. Messages reach the domains before the built-in handlers.
+- `d.feature(*names, when=None)` and `d.drop_feature(*names, when=None)`: the hello's and `/api/v1/health`'s `features`, applied after
+  the built-in ones (`drop_feature` plays an older hub); `when` is asked each time.
+- `d.help("MOCK_X=1  what it does")` for `mock_hub.py --help`, and `d.on_reset(hook)` for `GET /mock/reset` (before the built-in reset).
+- `d.hub.<NAME>`: `mock_hub.py`'s globals, read when used (`SESSIONS`, `ITEMS`, `CLIENTS`, `broadcast(msg)`, `push_machine(id)`, …).
+
+Domains load in list order after every built-in switch has built its fixtures, and before the To-dos view
+(`todo_view_mock.py`), which replaces the to-dos. A domain reads its `MOCK_*` switch from `os.environ`; what exists only with the
+switch is registered only when it is on (the help line always), so with it off the hub answers as before. The first domain on the
+registry is desktop registration (`scripts/mock/desktops_mock.py`); `scripts/mock/test_mock_domains.py` checks every hook against a
+running mock.
 
 ### Readiness scenarios (`MOCK_READINESS`, #287)
 
@@ -1204,6 +1329,32 @@ Give such a machine `"herdr_autostart": false` (and `"botmux": false`) unless th
 that has no panes (`StopUnusedHerdr`, `server/internal/node/herdrstart.go`); a server with panes stays. A cleanup
 still ends by checking `ps eww` for processes whose `HOME` is the test's, and stops any it finds through their own
 socket (`HERDR_SOCKET_PATH=<test socket> herdr server stop`), never the user's herdr.
+
+### Switching an ssh computer to Persona Link (#10662)
+
+`scripts/test/link_switch_e2e.py --bin <dir> --scenario success|rollback|linger_off` runs a switch end to end, as in
+[link.md](link.md) "Switching from SSH". `<dir>` holds linux/amd64 `personad` and `persona-link` of one version. Each run is
+disposable:
+
+- a throwaway hub and its manager under an isolated `HOME` / `PERSONA_HOME`, with TLS on the docker bridge address;
+- a Postgres container;
+- a systemd container as the computer, which runs `--privileged --cgroupns=private` because systemd needs a writable cgroup.
+  Without that flag it exits at once.
+
+The hub reaches the computer over ssh only through a wrapper with its own config, key and known_hosts, so the user's `~/.ssh` is
+never read. The containers (`--prefix`), the network and the key are removed at the end.
+
+- `rollback` cuts the computer's route to the hub (`ip route add prohibit`). It sits on a network of its own, so ssh replies still
+  get through. The run checks the switch fails, the kind is ssh again, nothing it installed is left, and the computer answers over
+  ssh.
+- `linger_off` leaves linger off and expects a refusal at the check, with nothing changed on the computer.
+- `--node-service` gives the computer its own resident node service first. A switch must leave it as it was, and so
+  must a rollback.
+- `hub_pause` is `rollback` with the hub's slot process stopped (SIGSTOP) right after its begin, for `--pause` seconds
+  (150). Until the hub is running again, Persona Link must stay on the computer; the rollback must then finish and be
+  confirmed.
+- Every scenario checks the pairing secret is not in the hub's log or the manager's record.
+- `--hold <seconds>` keeps it all up afterwards, for screenshots of the web app (`--web web/dist`).
 
 ## Codex integration
 
