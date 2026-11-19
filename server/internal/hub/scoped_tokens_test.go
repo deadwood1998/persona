@@ -18,7 +18,7 @@ import (
 func TestScopedDeviceToken(t *testing.T) {
 	h := newTestHub(t)
 	h.store = testDB(t)
-	machine := fakeNode(t, 2)
+	machine := fakeNode(t, 3)
 	machine.sessions = []proto.Session{
 		{SessionID: "s1", Title: "Visible chat", Status: proto.StatusIdle, Cwd: "/private-dir"},
 		{SessionID: "offline", Status: proto.StatusOffline},
@@ -140,7 +140,7 @@ func TestScopedDeviceToken(t *testing.T) {
 	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"subscribe","machine_id":"m1","session_id":"health","since_seq":1}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"subscribe","machine_id":"m1","session_id":"s1","since_seq":1}`)); err != nil {
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"subscribe","machine_id":"m1","session_id":"s1","since_seq":0}`)); err != nil {
 		t.Fatal(err)
 	}
 	for {
@@ -149,8 +149,10 @@ func TestScopedDeviceToken(t *testing.T) {
 			t.Fatal(err)
 		}
 		var event struct {
-			Type  string `json:"type"`
-			Items []struct {
+			Type    string `json:"type"`
+			Backlog bool   `json:"backlog"`
+			HasMore *bool  `json:"has_more"`
+			Items   []struct {
 				ID string `json:"id"`
 			} `json:"items"`
 		}
@@ -159,8 +161,8 @@ func TestScopedDeviceToken(t *testing.T) {
 			t.Fatalf("unexpected event: %s", raw)
 		}
 		if event.Type == "items" {
-			if len(event.Items) != 1 || event.Items[0].ID != "i2" {
-				t.Fatalf("subscription items: %s", raw)
+			if !event.Backlog || event.HasMore == nil || !*event.HasMore || len(event.Items) != 2 || event.Items[0].ID != "i2" || event.Items[1].ID != "i3" {
+				t.Fatalf("initial subscription dropped older-page availability: %s", raw)
 			}
 			break
 		}
@@ -169,7 +171,7 @@ func TestScopedDeviceToken(t *testing.T) {
 		{SessionID: "s1", Title: "Changed title", Cwd: "/private-dir", Status: proto.StatusWorking},
 		{SessionID: "health", Space: "health"},
 	}})
-	h.toSubscribers("m1", "s1", map[string]any{"type": "items", "machine_id": "m1", "session_id": "s1", "has_more": true,
+	h.toSubscribers("m1", "s1", map[string]any{"type": "items", "machine_id": "m1", "session_id": "s1",
 		"items": []proto.Item{
 			{ID: "chat", Kind: "text", Role: "assistant", Text: "Visible reply", From: "private sender"},
 			{ID: "tool", Kind: "tool_result", Role: "tool", Text: "private result", ToolInput: json.RawMessage(`{"data":"private data"}`)},
@@ -184,7 +186,6 @@ func TestScopedDeviceToken(t *testing.T) {
 			Type     string                 `json:"type"`
 			Sessions []scopedSessionSummary `json:"sessions"`
 			Items    []scopedChatItem       `json:"items"`
-			HasMore  bool                   `json:"has_more"`
 		}
 		if err := json.Unmarshal(raw, &event); err != nil || strings.Contains(string(raw), "private") {
 			t.Fatalf("bad scoped event: %s", raw)
@@ -193,7 +194,7 @@ func TestScopedDeviceToken(t *testing.T) {
 		case "sessions":
 			gotSessions = len(event.Sessions) == 1 && event.Sessions[0].Title == "Changed title"
 		case "items":
-			gotItems = event.HasMore && len(event.Items) == 2 && event.Items[0].Text == "Visible reply" && event.Items[1].ID == "tool" && event.Items[1].Text == ""
+			gotItems = len(event.Items) == 2 && event.Items[0].Text == "Visible reply" && event.Items[1].ID == "tool" && event.Items[1].Text == ""
 		}
 	}
 	if code, out := call(t, mux, "DELETE", "/api/v1/auth/tokens/"+readID, master, ""); code != http.StatusOK {
