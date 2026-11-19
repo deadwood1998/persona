@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/nwverse/persona/server/internal/extwire"
 	"github.com/nwverse/persona/server/internal/proto"
@@ -23,6 +25,18 @@ func (h *Hub) scopedPublicSession(machine, session string) bool {
 	return ok && !healthSession(&s)
 }
 
+// Match the relayed Agents routes at their concrete method-qualified patterns.
+var scopedRelayedAgentRoutes = func() *http.ServeMux {
+	mux := http.NewServeMux()
+	for pattern := range extwire.RouteScopes {
+		_, path, _ := strings.Cut(pattern, " ")
+		if path == "/api/v1/agents" || strings.HasPrefix(path, "/api/v1/agents/") {
+			mux.HandleFunc(pattern, http.NotFound)
+		}
+	}
+	return mux
+}()
+
 // scopedDeviceRoute uses the same registered route pattern as extension
 // authorization. A scoped device can receive only scopes for Agent integration.
 func (h *Hub) scopedDeviceRoute(r *http.Request) string {
@@ -31,6 +45,8 @@ func (h *Hub) scopedDeviceRoute(r *http.Request) string {
 	}
 	_, pattern := h.apiMux.Handler(r)
 	switch pattern {
+	case "/api/v1/agents", "/api/v1/agents/":
+		_, pattern = scopedRelayedAgentRoutes.Handler(r)
 	case "GET /api/v1/interactions/history", "POST /api/v1/interactions/{id}/reanswer":
 		// Stored answers have no pending card to prove their visibility or kind here.
 		return ""
@@ -66,6 +82,36 @@ func (h *Hub) authorizeScopedDevice(w http.ResponseWriter, r *http.Request, p pr
 	}
 	scopedPermissionDenied(w, scope)
 	return false
+}
+
+func scopedSendNeedsPermissionMode(s proto.Session, fields map[string]any) bool {
+	for key := range fields {
+		if strings.EqualFold(key, "permission_mode") {
+			return true
+		}
+	}
+	switch s.Status {
+	case proto.StatusIdle, proto.StatusWorking, proto.StatusBlocked, proto.StatusDone, proto.StatusInterrupted:
+		return false
+	}
+	return true
+}
+
+type scopedSessionSummary struct {
+	SessionID string `json:"session_id"`
+	MachineID string `json:"machine_id"`
+	Title     string `json:"title"`
+	Agent     string `json:"agent,omitempty"`
+	Status    string `json:"status"`
+}
+
+type scopedChatItem struct {
+	ID   string    `json:"id"`
+	Seq  int       `json:"seq"`
+	TS   time.Time `json:"ts"`
+	Role string    `json:"role"`
+	Kind string    `json:"kind"`
+	Text string    `json:"text,omitempty"`
 }
 
 // Scoped sockets can follow conversations and check connectivity.
@@ -117,7 +163,13 @@ func (c *client) scopedSocketFrame(data []byte) []byte {
 		if json.Unmarshal(frame["sessions"], &rows) != nil {
 			return nil
 		}
-		out["sessions"] = slices.DeleteFunc(rows, func(s proto.Session) bool { return healthSession(&s) })
+		summaries := make([]scopedSessionSummary, 0, len(rows))
+		for _, row := range rows {
+			if !healthSession(&row) && !row.Archived {
+				summaries = append(summaries, scopedSessionSummary{row.SessionID, row.MachineID, row.Title, row.Agent, row.Status})
+			}
+		}
+		out["sessions"] = summaries
 		copyFields("machine_id")
 	default:
 		var mid, sid string
@@ -138,8 +190,16 @@ func (c *client) scopedSocketFrame(data []byte) []byte {
 			if json.Unmarshal(frame["items"], &items) != nil {
 				return nil
 			}
-			out["items"] = items
-			copyFields("history", "from_seq", "to_seq", "backlog", "more_after")
+			chat := make([]scopedChatItem, 0, len(items))
+			for _, item := range items {
+				visible := scopedChatItem{ID: item.ID, Seq: item.Seq, TS: item.TS, Role: item.Role, Kind: item.Kind}
+				if item.Kind == "text" && (item.Role == "user" || item.Role == "assistant") && item.Injected == nil && item.Source == nil {
+					visible.Text = item.Text
+				}
+				chat = append(chat, visible)
+			}
+			out["items"] = chat
+			copyFields("history", "from_seq", "to_seq", "backlog", "has_more", "more_after")
 		case "delta":
 			copyFields("text")
 		case "live":

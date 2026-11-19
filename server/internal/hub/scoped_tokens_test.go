@@ -19,7 +19,11 @@ func TestScopedDeviceToken(t *testing.T) {
 	h := newTestHub(t)
 	h.store = testDB(t)
 	machine := fakeNode(t, 2)
-	machine.sessions = []proto.Session{{SessionID: "s1"}, {SessionID: "health", Space: "health"}}
+	machine.sessions = []proto.Session{
+		{SessionID: "s1", Title: "Visible chat", Status: proto.StatusIdle, Cwd: "/private-dir"},
+		{SessionID: "offline", Status: proto.StatusOffline},
+		{SessionID: "health", Space: "health"},
+	}
 	machine.hub = h
 	h.machines = append(h.machines, machine)
 	h.byID[machine.cfg.ID] = machine
@@ -43,6 +47,13 @@ func TestScopedDeviceToken(t *testing.T) {
 		}
 		return out["id"].(string), out["token"].(string)
 	}
+	code, paired := call(t, mux, "POST", "/api/v1/auth/tokens", master, `{"kind":"phone"}`)
+	if code != http.StatusOK {
+		t.Fatalf("phone issuance: %d %v", code, paired)
+	}
+	if code, out := call(t, mux, "POST", "/api/v1/auth/tokens", paired["token"].(string), `{"scopes":["agents.read"]}`); code != http.StatusForbidden || out["code"] != "permission_denied" {
+		t.Fatalf("a paired device minted Agent credentials: %d %v", code, out)
+	}
 	readID, readToken := mint("agents.read")
 	t.Cleanup(func() { _, _ = h.store.RevokeDeviceToken(context.Background(), readID) })
 	writeID, writeToken := mint("agents.control")
@@ -52,6 +63,14 @@ func TestScopedDeviceToken(t *testing.T) {
 	}
 	if code, out := call(t, mux, "POST", "/api/v1/sessions", writeToken, `{"machine_id":"m1","resume_session_id":"s1"}`); code != http.StatusForbidden || out["scope"] != "agents.permission_mode" {
 		t.Fatalf("control-only resume: %d %v", code, out)
+	}
+	for _, test := range []struct{ path, body string }{
+		{"/api/v1/sessions/m1/offline/messages", `{"text":"Check the result"}`},
+		{"/api/v1/sessions/m1/s1/messages", `{"text":"Check the result","Permission_Mode":"default"}`},
+	} {
+		if code, out := call(t, mux, "POST", test.path, writeToken, test.body); code != http.StatusForbidden || out["scope"] != "agents.permission_mode" {
+			t.Fatalf("scoped message requires a permission grant: %d %v", code, out)
+		}
 	}
 	h.reported.mu.Lock()
 	h.reported.interactions = map[string]proto.Interaction{
@@ -136,7 +155,7 @@ func TestScopedDeviceToken(t *testing.T) {
 			} `json:"items"`
 		}
 		if json.Unmarshal(raw, &event) != nil || !scopedSocketEvent(event.Type) || strings.Contains(string(raw), "owner push") ||
-			strings.Contains(string(raw), `"health"`) {
+			strings.Contains(string(raw), `"health"`) || strings.Contains(string(raw), "/private-dir") {
 			t.Fatalf("unexpected event: %s", raw)
 		}
 		if event.Type == "items" {
@@ -144,6 +163,37 @@ func TestScopedDeviceToken(t *testing.T) {
 				t.Fatalf("subscription items: %s", raw)
 			}
 			break
+		}
+	}
+	h.broadcast(map[string]any{"type": "sessions", "machine_id": "m1", "sessions": []proto.Session{
+		{SessionID: "s1", Title: "Changed title", Cwd: "/private-dir", Status: proto.StatusWorking},
+		{SessionID: "health", Space: "health"},
+	}})
+	h.toSubscribers("m1", "s1", map[string]any{"type": "items", "machine_id": "m1", "session_id": "s1", "has_more": true,
+		"items": []proto.Item{
+			{ID: "chat", Kind: "text", Role: "assistant", Text: "Visible reply", From: "private sender"},
+			{ID: "tool", Kind: "tool_result", Role: "tool", Text: "private result", ToolInput: json.RawMessage(`{"data":"private data"}`)},
+		}})
+	gotSessions, gotItems := false, false
+	for !gotSessions || !gotItems {
+		_, raw, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var event struct {
+			Type     string                 `json:"type"`
+			Sessions []scopedSessionSummary `json:"sessions"`
+			Items    []scopedChatItem       `json:"items"`
+			HasMore  bool                   `json:"has_more"`
+		}
+		if err := json.Unmarshal(raw, &event); err != nil || strings.Contains(string(raw), "private") {
+			t.Fatalf("bad scoped event: %s", raw)
+		}
+		switch event.Type {
+		case "sessions":
+			gotSessions = len(event.Sessions) == 1 && event.Sessions[0].Title == "Changed title"
+		case "items":
+			gotItems = event.HasMore && len(event.Items) == 2 && event.Items[0].Text == "Visible reply" && event.Items[1].ID == "tool" && event.Items[1].Text == ""
 		}
 	}
 	if code, out := call(t, mux, "DELETE", "/api/v1/auth/tokens/"+readID, master, ""); code != http.StatusOK {
@@ -159,5 +209,35 @@ func TestScopedDeviceToken(t *testing.T) {
 	}
 	if code, out := call(t, mux, "GET", "/api/v1/sessions", readToken, ""); code != http.StatusUnauthorized {
 		t.Fatalf("revoked token: %d %v", code, out)
+	}
+}
+
+func TestScopedDeviceAgentRelay(t *testing.T) {
+	h, _, _, srv := relayTestHub(t)
+	mux := srv.Config.Handler
+	mint := func(scope string) string {
+		t.Helper()
+		code, out := call(t, mux, "POST", "/api/v1/auth/tokens", h.cfg.Token, `{"scopes":["`+scope+`"]}`)
+		if code != http.StatusOK {
+			t.Fatalf("issuance: %d %v", code, out)
+		}
+		return out["token"].(string)
+	}
+	read, write := mint("agents.read"), mint("agents.control")
+	const list = "/api/v1/agents/sessions"
+	const message = "/api/v1/agents/sessions/src%3Ak1/messages"
+	for _, tc := range []struct {
+		method, path, token, body, code string
+		status                          int
+	}{
+		{"GET", list, read, "", "", http.StatusOK},
+		{"GET", list, write, "", "permission_denied", http.StatusForbidden},
+		{"POST", message, write, `{"text":"Check the result"}`, "", http.StatusOK},
+		{"POST", message, read, `{"text":"Check the result"}`, "permission_denied", http.StatusForbidden},
+		{"POST", message, write, `{"text":"\u001b"}`, codeTerminalControls, http.StatusForbidden},
+	} {
+		if status, out := call(t, mux, tc.method, tc.path, tc.token, tc.body); status != tc.status || tc.code != "" && out["code"] != tc.code {
+			t.Fatalf("%s %s: %d %v", tc.method, tc.path, status, out)
+		}
 	}
 }
