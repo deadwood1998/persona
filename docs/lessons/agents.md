@@ -1,5 +1,18 @@
 # Lessons: Claude Code, Codex, and herdr
 
+## An account-sealed compaction needs a new conversation, not Continue (#10399)
+
+- Classify the permanent cause before trusting a runtime's generic transient kind or a gateway's status. Cancel
+  continuations already queued before the cause was recognized; hiding the button alone does not stop them.
+- Archiving is visibility, not invalidation: a newer transcript restores it. Derive obsolete interruption rows from
+  the linked task's current participants, parking and close state, and keep the same cases on every client.
+- Error detection also runs on every ordinary session's last answer. Compare a case-insensitive prefix without
+  lowercasing whole answers; an extra allocation per row broke the 8,200-session list's allocation budget.
+- For mock screenshots, combine `MOCK_TASKS=1 MOCK_TASKS_CUT=1 MOCK_TASKS_INVALID=1` with the mock hub. This is UI
+  evidence only, not deployment or proof that a real account-sealed conversation has disappeared from Needs you.
+- Keep permanent compaction errors separate from retryable tool-search refusals when merging error handling.
+  Preserve both wire codes and both failed-turn tests; loading all tools can fix tool search, not account-sealed context.
+
 ## A deferred action on an agent belongs to its process, not its session id (#10296)
 
 - A session id outlives its Claude Code process: the owner quits and resumes, Persona's Resume starts a new one, a crash is resumed. A queued restart into Full access, keyed by session id alone for a day, quit a claude that resumed the conversation later in Default and restarted it in Full access.
@@ -225,6 +238,9 @@ may legitimately repeat an earlier answer, so retirement follows the landed stre
 - After approving a plan in `herdr`, the `PermissionRequest` hook may not exit promptly, and `interaction.cancel` may not reach hub (2026-11-01: the transcript already had a successful `ExitPlanMode` tool_result, session working, phone still needs_you). On sessions / revs changes, hub reads bounded transcript pages for pending plans and ends them using the matching tool_use_id's tool_result. For old hooks without an id, accept only a unique ExitPlanMode call within 30 seconds before creation, with a result no earlier than card creation. Ambiguous matches, offline nodes, "working" alone, or model text never clear it. A 30-second timer covers lost events; per-card rate limiting and single-flight avoid duplicate disk reads.
   Cleanup only removes stale cards, broadcasts `interaction_resolved`, and records dismissed history; it doesn't fabricate phone approval, permission mode, or answers. A still-waiting hook receives only Dismiss, not allow. New plans, questions / tool permissions aren't affected by old plan results. Regressions: `assistant/fleet_cards_test.go` (missing tool_use_id, cross-page matching, local deny / interrupt, fake approval text, old/new card races, App push and persistence).
 - Tool permissions have the same issue (#3563): answering the terminal permission dialog doesn't end PermissionRequest, leaving the phone card until timeout. Permission cards likewise end from the tool_use_id's tool_result, but require an exact id (don't guess for id-less cards); don't collect phone-answered (claimed) cards, to avoid rewriting resolved as dismissed.
+- TRAE startup, identity and history are separate checks (#7559). A new task can work while SQLite-only history remains unreadable.
+  Test both retained rollouts and paginated-only history; exclude existing thread IDs before a fresh start, and do not preallocate a Claude ID.
+  An Orca workspace can merely contain a terminal that changed directory: derive the TRAE session cwd from its metadata and preserve the real container separately.
 - Hooks in `--settings <file>` are read only at startup; matcher changes require restarting claude. The hook script itself is reread on every execution.
 - `herdr agent wait` may return agent_not_found before herdr recognizes the Agent: poll `agent get` after startup.
 - On computers without herdr's claude integration, `agent list` lacks session ids (fallback in `docs/integrations/claude-integration.md`).
@@ -241,6 +257,9 @@ may legitimately repeat an earlier answer, so retirement follows the landed stre
   and records discovered directories in the database. Put rarely running profiles in `machines[].claude_config_dirs` in `hub.json` (`server/internal/node/claudedirs.go`).
   The old workaround symlinked `~/.claude/projects` and `sessions` to a profile; existing symlinks are fine (deduped by real path), but no more are needed.
   Symptoms of a missed directory: assistant resume says "Session ID … is already in use", transcript not found in the App, herdr Agents can't be mapped to sessions.
+- Auto memory follows the config directory too: a conversation given its own profile gets its own `projects/<encoded cwd>/memory`, with nothing
+  saying so. Whatever must be one memory across profiles needs `autoMemoryDirectory` in the start's `--settings` (ignored in checked-in project
+  settings, known from Claude Code 2.1.74) and a merge of the copies made before it (#9440; `docs/assistant/assistant.md`, "One memory").
   Conversely, automation running claude with its own `CLAUDE_CONFIG_DIR` is discovered and remembered by hub, flooding lists with hundreds of offline sessions. Deleting `claude_dirs/<machine>` records doesn't help
   (the next scan reports it again); use "Mute configuration directory" (`docs/integrations/claude-integration.md`, #676).
 - After node discovered all config directories (PR #12), a machine with over ten Agents and hundreds of MB of transcripts read disk continuously at about 20 MB/s: every herdr event rebuilt session lists,
@@ -519,6 +538,16 @@ of a kind is code there (as #7319 is for gateways whose model list lacks a fallb
 provider's `env` field, where a value, an empty one too, overrides a Persona default. Check such a setting in the
 profile the process really uses, not in `~/.claude`.
 
+## A profile hook installed on the next scan is too late for the first start (#7636)
+
+Claude Code reads settings hooks only at process startup. An extension that discovers a new assistant profile on its next
+heartbeat can therefore leave the conversation's first process without its `PermissionRequest` policy even when periodic
+reconciliation is otherwise correct. Seed a brand-new directory only with the extension's stable tagged entry, never copy
+arbitrary hooks or rewrite an existing profile; the extension still owns the policy and later profile-local reconciliation.
+A synthetic real-Claude check on 2.1.322 also rejected a plausible but wrong event attribution: storing an `ssh` command in
+a variable and expanding it as the command did not emit `PermissionRequest` in bypass mode and the command ran. Do not infer
+the prompt's command from elapsed time; capture the hook event or use a known bypass-immune call.
+
 ## `--setting-sources project` still reads `~/.claude` as the home's project files (2026-11-12, #5786)
 
 A guest conversation's `--tools ""` and `--strict-mcp-config` take away tools, not context: an extension's guest on the
@@ -584,6 +613,12 @@ the lookup window and does not make the later engine request atomic with binding
 On a Mac running Orca, starts kept failing after 3 minutes with "the tab's shell had not run it yet", the start line sitting unrun after the prompt. Its echo was printed above the shell's banner too, so it had been typed before the shell started. For the first 40–100 ms after `terminal.create` returns, Orca's `terminal.read` answers `source: "screen-unavailable"` (`orcart.ErrNoScreen`). `settleShell` took any read error to mean "this host cannot read screens" and typed at once. The tty was still canonical, and Orca had been left out of the start file, so the 1400-byte command was cut at 1024 bytes (the echo above the banner is exactly that long) and its Enter was dropped. It looked like it depended on load or on whether the start made a worktree, but it was a race on every start: whether the first settle read came before Orca had a screen.
 
 `settleShell` now waits while the host has no screen yet, and Orca starts type the start file as herdr's do (`TestOrcaStartWaitsForTheScreenAndTypesAShortLine`). If a host can say "not drawn yet", treat that as "wait", not as "cannot read". To check by hand: `orca terminal create` followed at once by `orca terminal send` of a line over 1024 bytes plus `\r` leaves the line unrun.
+
+## An engine naming claude in a start's tab is not claude having come (2026-11-19, #10588)
+
+On a Linux node with Orca, one of three starts sent in the same second failed twice with `agent_start_stalled`, "claude did not become ready within 1m0s of starting". Its tab held only about 30 empty zsh prompts: the start line was never echoed and Claude Code never ran there. No dialog had appeared, so Orca must have named claude for that pane, and `waitReady` took that alone as claude running (`started()`): it waited 1 minute for an input box instead of 3 for the shell, blamed Claude, and skipped the shell's answers (`shellmiss.go`, #1642 and #2570), which it reads only while claude has not come. Orca names an agent from a process scan by pane key and, when that fails, from its own row and terminal identity, which outlive the agent (`hostorca.go`); its `terminal.send` does not say whether the text reached the shell either. Why the line never arrived is still unknown.
+
+A start in an Orca tab now needs evidence of its own before Orca's word counts (`node/startevidence.go`): Claude Code's screen (its banner, input box or a dialog), or the start line run, meaning its start file is gone (the file removes itself first) and nothing on screen says the shell could not run it. The echo alone is not enough: a line sitting unrun after the prompt (#5450) and a line the shell answered for (a cut head, a command not found) both leave it on screen. A start whose line never showed in the tab and whose start file was never read ends after the shell's wait as `terminal_not_ready`: nothing ran, the tab is closed, and the hub's one retry opens a new one. herdr keeps its word: it names the program in front of the pane, stops once it exits (`claudeGoneWait` relies on that), and reports a line it could not send (`pane_send_failed`). `TestOrcaStartNeedsEvidenceBeyondOrcasWord` covers each case. Not covered: an Orca terminal takes one launch (`orcaHost.Run`), so the #2570 retype of a rejected line cannot run in the same Orca tab and fails as a second launch.
 
 ## A pane's shell may be fish: quote for it too (2026-11-10, #2867)
 
@@ -1168,6 +1203,18 @@ distinguishes even repeated prompts with identical timestamps. Preserve prefix a
 pairing too, and invalidate old cached pages once. Test normal runtime pages and full-item reads across append and
 complete-file replacement; fresh sessions and distinct sequential prompts do not exercise reused identities.
 
+## AGY exports parallel results as they finish; a late step is not a rewind, and a call without a result must not shift the rest (#11086)
+
+Parallel calls are exported in completion order, so a call that fails at once (unknown tool, invalid arguments) lands
+before its sibling's result: `228` (two calls), `230` (INVALID), `229`. Reading the lower index as a rewind popped
+`230`, started a new branch and left the second call without a result. The readers also paired results with calls
+through a queue that nothing reset, so one orphan call shifted every later result onto the call before its own, and the
+newest calls ended with no result, which the hub does not fold and the web draws as running tools. A step whose index
+no retained step has is a late arrival: insert it in step order, keep the branch (item IDs) and change the content
+revision so watchers re-read. A planner step, a prompt or an error closes the calls before it. `integrations/antigravity/lib/map.js`
+and `server/internal/node/agytranscript.go` must stay in step. Test with a real export's shape (the swapped lines,
+an interrupted call, a system message between results) and compare each result with its own call, not only the counts.
+
 ## An installed CLI is not an explicit runtime override (#9181)
 
 Plain AGY discovery joined the shell launcher cache and shadowed its connected assistant-capable companion. New
@@ -1367,6 +1414,19 @@ rather than counting on the model to follow the prompt, and check a real transcr
 parsing it. Once the card worked, the prompt went back to asking with AskUserQuestion as usual (#8558): a prompt's
 workaround that outlives the fix it stood in for is wrong advice to the model.
 
+## Peer attestation needs the receiver's live permission mode (#9672)
+
+Claude Code 2.1.326's `sessions/<pid>.json` names the live process, session and tmux pane, but not its permission mode or
+bypass availability. A transcript's standalone `permission-mode` row is not rewritten on shift+tab; the next prompt records
+the mode instead. Reading even the newest transcript at send time therefore states the old class immediately after a switch:
+none after default became bypass is held, and stale bypass after the return to default is a mismatch. For an external tmux
+session, read the footer through the pane named by the PID file before using transcript evidence. A visible composer
+without a bypass or plan indicator is prompting even when a draft or dialog hides default's idle hint; do not fall back
+to a stale bypass transcript just because `tuiMode` has no exact idle-text match. Question and permission dialogs draw
+rules too; they are not composers and must not override transcript bypass. Plan has no single class:
+Claude counts it as bypass only when bypass is available, so use the live process's argv for the enabling flag rather than
+treating every plan session as prompting. Without those live sources, keep the old fail-closed outcome instead of guessing.
+
 ## A plugin's asUser prompt is the only way in that counts as the person's (Persona's Claude Code plugin)
 
 The peer inbox frames every message as another session's, and no wording in it makes the model take a go-ahead from
@@ -1416,3 +1476,7 @@ can contain multiple workspaces sharing a directory; importing a pin into `pins.
 the timestamp on the workspace catalog and match machine, source and source ID. An unpin must also release retained
 old sessions even if pin and unpin happen before the coalesced catalog push: a session push can observe the temporary
 pin while the final catalog bytes equal the earlier unpinned snapshot.
+
+## A transcript directory is not the selected launcher's sign-in
+
+When restoring an assistant conversation, finding its newest transcript does not establish that a newly selected launcher can authenticate in that profile. Check private-profile ownership before stopping the old process or writing input; a later CLI sign-in error has already accepted the wrong launch and may forward a provider-only model. A refusal should preserve the original process and session state and explain how to continue. Regression coverage needs cold resumes and live idle processes, with both an omitted model and the old provider's explicit model (#10453).
