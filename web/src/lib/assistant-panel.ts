@@ -63,7 +63,7 @@ export function assistantPanel(setup: AssistantSetup, info: AssistantLaunchers |
     const e = listOf(l.name);
     const isDefault = info?.def?.provider === l.name;
     const configuredModel = explicitLauncherModel(l.model);
-    const configured = (isDefault && info?.def?.model) || configuredModel;
+    const configured = (isDefault && explicitLauncherModel(info?.def?.model)) || configuredModel;
     const defaultRow = currentModelRow(e.list?.models ?? [], configured) ?? defaultModel(e.list?.models ?? []);
     const defaultName = defaultRow ? (defaultRow.resolved ? modelLabel(defaultRow.resolved) : modelName(defaultRow)) : configured ? modelLabel(configured) : undefined;
     const p: PanelProvider = { id: l.name, name: providerTitle(l), engine: kind, models: null, isDefault, defaultModel: defaultName };
@@ -75,7 +75,7 @@ export function assistantPanel(setup: AssistantSetup, info: AssistantLaunchers |
       // a launcher that fixes its own --model takes no model with a pick: what it runs by default, only
       if (e.list?.locked) models = models.filter((m) => m.id === defaultModel(e.list?.models ?? [])?.id);
       // no list to read (a direct API the computer can't ask, an older hub): the model it is configured with
-      if (!models.length && configuredModel) models = [{ id: configuredModel, name: modelLabel(configuredModel), efforts: kind === "claude" ? ALL_EFFORTS : [] }];
+      if (!models.length && configured) models = [{ id: configured, name: modelLabel(configured), efforts: kind === "claude" ? ALL_EFFORTS : [] }];
       p.models = models;
     }
     // the provider it runs on stays as it is, whatever its kind: it is what the panel says the chat runs

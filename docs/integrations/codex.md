@@ -73,6 +73,28 @@ The Persona assistant ("Persona" tab) can also use Codex launchers through `code
 
 Multiple existing app-server instances on one computer (desktop App, separate `CODEX_HOME`s, multiple clients reading / writing / approving) are integrated into the existing Agents list. See [`codex-app-server.md`](codex-app-server.md) for how that works and its limits; the source research behind it is in [the archive](../archive/integrations/codex-app-server-research.md). Discovering history requires no herdr; only instances exposing a protected Unix / loopback WebSocket endpoint support live connection and control. External stdio is explicitly read-only.
 
+## Visualize
+
+Codex's visualize plugin asks the model to write a self-contained HTML fragment (no network access of its own: no `fetch` / XHR, everything inlined, under 1 MB) and marks it inside an AgentMessage's text with private-use runes:
+
+`<U+E200>visualize<U+E202>{"path":"<abs>.html","mode":"wide"?,"title"?}<U+E201>`
+
+(`U+E200` opens, `U+E202` separates the tag from the JSON payload, `U+E201` closes.) The files live under `$CODEX_HOME/visualizations/YYYY/MM/DD/<codex session id>/`; `mode` is absent (the Codex client's 736 px frame) or `"wide"` (1024 px), and `title` is optional. The Codex client renders the fragment inline where the marker stood; without handling it, a reader sees only the file path as text.
+
+Persona's transcript parser (`server/internal/transcript/codex_visualize.go`) splits each marker out of the AgentMessage text: the words before, between and after the markers stay one or more ordinary `text` items, and each well-formed marker becomes its own `visualization` item (`proto.Visualization{path, mode, title}`), in order. A marker is kept verbatim as text when its JSON is invalid, its path is relative, its mode is unknown, its title is overlong, or it is not closed; blank lines around a marker are collapsed. The item never carries the fragment's bytes, only the file reference.
+
+Only the session's own completed AgentMessages are scanned. Markers also appear verbatim where one thread reads another's history — inside `codex_app` `read_thread` DynamicToolCall output, `custom_tool_call_output` snapshots and a compacted rollout's `guardian_history` — but those stay part of the tool result: they reference another session's files and repeat on every read, so re-emitting them would duplicate items the owning thread already produced.
+
+The node serves the bytes through `session.visualization`, and the hub through `GET /api/v1/sessions/{mid}/{sid}/items/{iid}/visualization` (`docs/protocol/protocol.md`, "Sessions"). The node resolves symlinks and only returns a file that:
+
+- is inside `$CODEX_HOME/visualizations`, with the fixed `YYYY/MM/DD/<session id>/<file>` shape;
+- belongs to the requested session: the directory's id is the session id or its main thread's;
+- is a regular file of at most 1 MiB (`visualizationMaxBytes`).
+
+Anything else answers `not_found`, so a marker cannot name an arbitrary file on the computer. The hub marks the response `text/html; charset=utf-8` and privately cacheable.
+
+The web client renders the item with `views/chat/VisualizationCard.tsx`: it fetches the fragment once when scrolled on screen and runs it in the same offline QuickJS sandbox as assistant HTML cards (`web/src/lib/html-runtime`, an `allow-scripts`-only iframe, no same-origin access), with every `persona.*` bridge call refused. The frame follows the fragment's height up to 640 px and is torn down off screen; a wide card may take 1024 px, another 736 px. Fetch and runtime failures show the file name and Retry. A Markdown export writes a `_[Visualization: <title or file name>]_` placeholder because the interactive frame has no Markdown form.
+
 ## Sessions on the daemon (app-server route)
 
 Rewind metadata preserves native terminal sessions' read, send, interrupt, approval and terminal capabilities.
@@ -336,6 +358,7 @@ The entry point is the same as Claude's (machine, directory, launcher); subseque
   so Apps make the message optional only for launchers marked `prompt_optional`. Launcher words and message are written together to a private temporary file under the node directory (0600). The pane receives only
   `personad codex-start <file>`: it claims the file (renames it away, so a node that gave up on the start and withdrew the file the same way leaves it nothing, and the other way round), reads and deletes it, then runs the launcher words (preceding `VAR=…` enters the environment), adding `--` and the message only when one is supplied.
   On Unix, native `codex` runs through the user's interactive shell to preserve a same-name function. The shell executes only `"$@"`: launcher words and the message are positional arguments, never interpolated as shell code.
+  On Windows, the private launch file carries no prompt: the TUI starts empty, then the node bracketed-pastes the complete message and submits it once after checking the composer. Readiness, paste and exact rollout confirmation share the startup timeout (#11145). Terminal line endings become LF; other terminal controls are made inert as for subsequent messages. Codex App uses structured IPC input instead of this terminal path.
   Quotes, newlines, `$`, backticks, Chinese, and thousands of characters all reach Codex unchanged (`codex_start.go`). Launcher words also stay off-screen and out of shell history
   (aliases may contain keys). With `--remote`, add `-C <directory>` (the TUI does not supply the directory itself when connecting to another app-server).
 - **Text only**: the first message carries no photos or files. New Agent offers no attachments for a Codex launcher on iPhone and iPad, and the web refuses such a start with "This launcher can't take attachments in the first message" (#2321).
@@ -357,6 +380,7 @@ The entry point is the same as Claude's (machine, directory, launcher); subseque
   followed by the last screen lines of that tab (falling back to the visible screen when the bottom rows are blank). If the launcher cannot run (command not found), fail as soon as a `personad codex-start:` line appears, without waiting the full timeout. codex-start's notes that it goes on after (the agent sandbox not wrapping the start) say `personad codex-start (note):` instead, so the Codex after them is not taken for a failure.
   If the terminal still reports Codex running, the error carries `agent_start_stalled`: the hub neither counts it as a broken launcher nor retries or reroutes the task automatically.
   Only after this wait returns a failure (including cancellation), the node closes the new pane to stop a Codex still waiting on a screen from later executing its queued prompt without a linked task.
+  If that pane explicitly identifies a fresh thread, or its unique Codex writer holds the fresh rollout, cleanup also asks Codex to archive that thread natively after the pane closes (#11145). This removes an already-published orphan from the Agent list while retaining its transcript. A directory, title or matching first line never authorizes archive; adopted panes remain untouched. Native archive failure is retained with the failed-pane cleanup for retry.
   This uses the terminal's existing close operation instead of keeping a background start waiting indefinitely for a thread. The last screen lines remain in the error.
   Independent starts in the same directory with the same launcher remain concurrent; waiting for one thread does not delay another start.
   If closing fails, the error says termination could not be confirmed. The node remembers every failed-cleanup pane for the directory and launcher; a later start must close the pending panes before opening another tab. Only that cleanup is serialized, and failures from concurrent starts are retained separately.
@@ -612,6 +636,17 @@ with its own tag and "Message the Agent" input label. Code: `server/internal/nod
 - **Infer state independently**: a braille spinner before the terminal title (`terminal_title`, not the stripped version) or "esc to interrupt" on screen = Working;
   numbered choices such as "› 1." = Needs you (a "Terminal is asking you" card). Otherwise report `done`, and the hub determines Unread / Seen from whether it has been read. Read the screen at most every 2 seconds.
 - **Same file layout as Codex**, rooted at `~/.trae/cli`: `sessions/YYYY/MM/DD/rollout-*.jsonl` and `session_index.jsonl` (thread names for titles).
+- **Paginated history (TRAE CLI 0.215)**: `state_<n>.sqlite` and `thread_history_<n>.sqlite` can be authoritative even when a rollout remains.
+  The node uses the existing paginated reader, with the system `sqlite3` 3.33 or newer, to list and read these conversations, including stored items
+  of a running turn and stopped conversations. Databases are opened read-only; generated transcripts stay in the node's private state directory.
+  Per-thread projection revisions keep unrelated database writes from rebuilding every transcript. Older schemas retain the database-stamp fallback.
+  Full history is projected only when its conversation is read or watched; listing sessions uses cached summaries and does not convert cold histories.
+  Live writer locks and process ancestry select one main conversation per pane; nested exec and guardian threads cannot replace it.
+  A fresh start excludes all historical IDs, and an asynchronous request waits for the CLI's actual thread instead of preallocating a Claude ID.
+- **Conversation directory and terminal container**: the session's cwd comes from its TRAE metadata, not the host workspace.
+  Orca may put a terminal for an unregistered directory in its active workspace and then change into the requested directory. Its workspace ID
+  still describes that physical container; it does not change where the CLI reads or writes. Register the project in Orca when its terminal
+  should belong to that project. Task permission handling remains as documented in [Read-only planned tasks](../assistant/todos.md#read-only-planned-tasks).
 - **Newer rollout format**: user messages and replies are in `history_mutation.display_completions[].item` (same item structure as `item_completed`),
   while tool calls remain in `event_msg/item_completed`. The same item may appear in both places within a turn (deduplicate by id within the turn). A `history_mutation` line may span hundreds of KB to 1 MB
   (full context after compaction); decode only `display_completions`. `task_started` / `task_complete` are recorded in `Meta.TurnOpen`.
@@ -702,6 +737,13 @@ connections return errors without retaining a next-turn speed override. `thread/
 provide the current speed. A native null means Standard. Missing speed stays unknown because `thread/read` does not
 currently report it. Refreshes preserve acknowledged state, and reconnects start with unknown state until native
 settings arrive. Terminal-only panes, subagents and models without advertised tiers have no speed control.
+
+The iOS main Assistant conversation reads the same session fields in its existing composer menu. A Speed section appears
+only when the session advertises `default` or `priority`; it uses localized Standard / Fast labels, explains Fast's extra
+quota use and says the choice applies to the next turn. Working does not disable it, while an offline or read-only action
+carries a one-line reason. Each choice is its own `POST …/modes {service_tier}` and nothing is drawn optimistically: the
+acknowledged session value owns the checkmark, summary updates preserve both fields, and a refusal or unconfirmed request
+shows an error without moving the last acknowledged selection. Model and effort requests remain separate.
 
 A new Persona conversation can carry the same native tier in `POST /api/v1/assistant/conversations` while the default
 manager names `assistant_start_service_tier` in `manager.hello` and the hub lists that feature. Launcher model discovery

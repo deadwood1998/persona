@@ -32,7 +32,7 @@ import { runStep, sameStep, turnDone, type RunStep } from "../../lib/run-step";
 import { stabilizeLines, stableValue } from "../../lib/stable-lines";
 import { planProgress, workLineStyle } from "../../lib/work-groups";
 import { echoed, taggedSeen } from "../../lib/echo";
-import { assertDelivered, isKept, keptBubble, showKept, shownUndelivered, type KeptReply } from "../../lib/undelivered";
+import { AGENT_MESSAGE_HOLD_FEATURE, assertDelivered, isKept, keptBubble, showKept, shownUndelivered, type KeptReply } from "../../lib/undelivered";
 import { lazyPage } from "../../lib/lazy-page";
 import { acceptOutgoing, forgetOutgoing, inSendOrder, keepFailed, keepOutgoing, noteWritten, outboxKey, placeFailed, registerOutboxRecheck, relayNotice, restoreOutbox, retryOutbox, SENT_GRACE_MS, settleOutbox, type DeliveryReply } from "../../lib/outbox";
 import { apiOp } from "../../lib/ops";
@@ -116,7 +116,7 @@ import { pickParts } from "./picking-parts";
 import type { MessagePick } from "../../lib/message-pick";
 import { foldHolding, lineOfItem, loadEarlierForSearch, untilStill, type ChatSearchHit, type SearchLoadOutcome } from "../../lib/chat-search";
 import { chatFiles } from "../../lib/mentions";
-import { sameMessage } from "../../lib/queue";
+import { pairPhotoOnly, sameMessage } from "../../lib/queue";
 import { OutboxBubbles } from "./OutboxBubbles";
 import { MainRuntimeSlot } from "../assistant/MainRuntimeSlot";
 import { AssistantFace, CompactionStrip, useAssistantMenu } from "../assistant/AssistantChat";
@@ -129,8 +129,7 @@ import { externalOpening, openerOf } from "../../lib/conversation-origins";
 import { usePersona } from "../assistant/Persona";
 import { voiceCalls, useVoiceCall, useVoiceState } from "../../lib/voice/calls";
 import { agentLabel } from "../../lib/mentions";
-import { VoiceBar } from "./voice/VoiceBar";
-import { useVoiceEntry, VoiceEnded, VoiceTail } from "./voice/VoiceParts";
+import { useVoiceEntry, VoiceBar, VoiceEnded, VoiceTail } from "./voice/VoiceParts";
 import { ChatOnlyNote, FailureCard, ReadinessCard, useReadinessGate, type ReadinessGate } from "../assistant/Readiness";
 import { codedFailure, knownAction, refreshReadiness, type CodedFailure } from "../../lib/readiness";
 import { FALLBACK_UNAVAILABLE, recoveryExhausted } from "../../lib/model-fallback";
@@ -348,6 +347,13 @@ function ActiveChatView({ mid, sid, assistant, starting: launching, onToggleSide
   const subagents = stableSubagents(lastSubagents.current, listed);
   lastSubagents.current = subagents;
   const machineName = useStore((s) => machineWithHub(mid, s.machines));
+  // An Agent's computer away, on a hub that holds what is sent meanwhile (#10661): the box stays open and says the
+  // messages go once it is back, in words from the held bubbles' chunk, off the first screen (UndeliveredBubbles).
+  const computerAway = useStore((s) => !assistant && hubHas(s.features, AGENT_MESSAGE_HOLD_FEATURE) && s.machines.find((m) => m.id === mid)?.online === false);
+  const [awayLine, setAwayLine] = useState("");
+  useEffect(() => {
+    if (computerAway) void import("./UndeliveredBubbles").then((m) => setAwayLine(m.heldPlaceholder(machineName)), () => {});
+  }, [computerAway, machineName]);
   // A Codex opened with no first message (lib/codex-waiting.ts): once its thread comes (the message went in from here
   // or its terminal) the row goes and the thread's comes in the same pane, and this page follows it there.
   const waitsFirst = waitsForFirstMessage(session);
@@ -435,7 +441,11 @@ function ActiveChatView({ mid, sid, assistant, starting: launching, onToggleSide
   const sendFeedback = useMessageFeedback(mid, sid);
   // a message Claude queued shows in the queue strip, not as a sending bubble too (ChatView.swift chatScroll)
   const queued = session?.queued ?? [];
-  const shownPending = queued.length ? pending.filter((p) => !queued.some((q) => sameMessage(q, p.msg.text))) : pending;
+  // a photo-only one by its photos, as no words match it (#10871)
+  const photoOnly = useMemo(() => pairPhotoOnly(queued, pending.map((p) => ({ text: p.msg.text, images: p.msg.images?.length ?? 0,
+    carries: Boolean(p.msg.files?.length || p.msg.contexts?.length) }))), [queued, pending]);
+  const pairedPending = useMemo(() => new Set(photoOnly.values()), [photoOnly]);
+  const shownPending = queued.length ? pending.filter((p, i) => !pairedPending.has(i) && !queued.some((q) => sameMessage(q, p.msg.text))) : pending;
   // the owner's messages the assistant keeps after they could not go in, from the row: on every device (#10194)
   // (not one this page still draws as sending: the row can come before the send's answer)
   const keptUndelivered = shownUndelivered(session, tr.items, pending.map((p) => p.id));
@@ -445,11 +455,12 @@ function ActiveChatView({ mid, sid, assistant, starting: launching, onToggleSide
   // Both stay the same while `pending` does: the queue is drawn in the memoized composer.
   const queuedPhotos = useCallback((raw: string) => pending.find((p) => sameMessage(raw, p.msg.text))?.msg.images?.length ?? 0, [pending]);
   const withdrawn = useCallback((text: string) => {
-    const gone = pending.find((p) => !p.posting && sameMessage(text, p.msg.text));
+    const paired = photoOnly.get(text);
+    const gone = pending.find((p) => !p.posting && sameMessage(text, p.msg.text)) ?? (paired !== undefined && !pending[paired]?.posting ? pending[paired] : undefined);
     if (!gone) return;
     forgetOutgoing(outboxKey(mid, sid), gone.id);
     setPending((ps) => ps.filter((p) => p.id !== gone.id));
-  }, [pending, mid, sid]);
+  }, [pending, photoOnly, mid, sid]);
   const outgoing = shownPending.length + outbox.filter((e) => e.state !== "failed").length;
   const persona = usePersona();
   const state = session ? stateOf(session) : "unknown";
@@ -1808,7 +1819,9 @@ function ActiveChatView({ mid, sid, assistant, starting: launching, onToggleSide
   // a turn that failed on the refusal fallback's missing model (#2528): "Continue" would send it to the same model; the
   // main conversation's setup gate would only open its missing step, as it does for every send while it holds (`deliver`)
   const canRetry =
-    lastLine?.kind === "apiError" && state !== "working" && !outgoing && sessionCan(session, "send") && session?.turn_error_code !== FALLBACK_UNAVAILABLE && !gate.blocked;
+    lastLine?.kind === "apiError" && state !== "working" && !outgoing && sessionCan(session, "send") &&
+    session?.turn_error_code !== FALLBACK_UNAVAILABLE && session?.turn_error_code !== "compaction_sealed" &&
+    session?.turn_error_kind !== "unrecoverable" && !gate.blocked;
   // An exhausted recovery chain (#7824): the last error card names the cause and reset time, and Retry stays offered
   // even for a safeguards-class error the parser calls non-transient. The marker is session-level, so only the last
   // API error line carries it; whether Retry is enabled at all still follows canRetry (idle and able to send).
@@ -2185,9 +2198,11 @@ function ActiveChatView({ mid, sid, assistant, starting: launching, onToggleSide
               </div>
             ) })), ...placed.rest.map((e) => ({ at: e.at, el: <OutboxBubbles key={`outbox:${e.id}`} mid={mid} sid={sid} entries={[e]} canRetry={!refusedNoRow} /> })),
               ...keptUndelivered.map((m) => ({ at: Date.parse(m.at) || 0, el: (
-                <Suspense key={`undelivered:${m.id}`} fallback={<UserBubble msg={keptBubble(m)} mid={mid} sid={sid} sendState="failed" />}>
-                  <UndeliveredBubble mid={mid} sid={sid} m={m} />
-                </Suspense>
+                <PageBoundary key={`undelivered:${m.id}`} page="undelivered">
+                  <Suspense fallback={<UserBubble msg={keptBubble(m)} mid={mid} sid={sid} sendState="failed" />}>
+                    <UndeliveredBubble mid={mid} sid={sid} m={m} />
+                  </Suspense>
+                </PageBoundary>
               ) }))]
               .sort((a, b) => a.at - b.at)
               .map((x) => x.el)}
@@ -2305,7 +2320,7 @@ function ActiveChatView({ mid, sid, assistant, starting: launching, onToggleSide
         ) : (
         <Composer
           draftKey={draftKey}
-          placeholder={offlineLine ? offlineLine : waitsFirst ? t("chat-chatview.codex_first_placeholder") : refusedNoRow ? t(gone ? "chat-chatview.session_gone_placeholder" : "chat-chatview.connecting_placeholder") : viewOnlyRow(session) ? t("chat-chatview.view_only") : state === "working" || state === "needs_you" ? t("chat-chatview.queue_placeholder") : assistant ? askPlaceholder ?? t("chat-chatview.ask_placeholder", { name: persona.name }) : state === "offline" ? t("chat-chatview.resume_placeholder") : t("chat-chatview.agent_placeholder")}
+          placeholder={offlineLine ? offlineLine : waitsFirst ? t("chat-chatview.codex_first_placeholder") : refusedNoRow ? t(gone ? "chat-chatview.session_gone_placeholder" : "chat-chatview.connecting_placeholder") : viewOnlyRow(session) ? t("chat-chatview.view_only") : computerAway && awayLine ? awayLine : state === "working" || state === "needs_you" ? t("chat-chatview.queue_placeholder") : assistant ? askPlaceholder ?? t("chat-chatview.ask_placeholder", { name: persona.name }) : state === "offline" ? t("chat-chatview.resume_placeholder") : t("chat-chatview.agent_placeholder")}
           machineId={mid}
           uploadDest={session?.space === "health" ? "health" : undefined}
           working={state === "working" || awaiting}
