@@ -178,18 +178,27 @@ describe("the model panel", () => {
     expect(document.body.textContent).toContain("需要新开对话");
   });
 
-  it("selects the same model ID from a specific launcher", async () => {
+  it("distinguishes identical model names by their launcher in All", async () => {
     const shared = [{ id: "fable", name: "Fable", efforts: [] }];
-    const { onPick } = await open({ providers: [claude({ models: shared }), codex({ models: shared, unavailable: undefined })], state: { current: null, recommended: [], starting: true } });
-    expect(groups()).toEqual(["Claude: ", "Codex: "]);
+    await open({ providers: [claude({ models: shared }), codex({ models: shared, unavailable: undefined })], state: { current: null, recommended: [], starting: true } });
     act(() => launcher("claude").click());
-    expect(groups()).toEqual(["Claude: Fable", "Codex: "]);
     act(() => launcher("codex").click());
-    expect(groups()).toEqual(["Claude: Fable", "Codex: Fable"]);
-    const codexRow = launcher("codex").closest("[data-panel-section]")!.querySelector<HTMLElement>("[data-panel-row]")!;
-    act(() => codexRow.click());
-    await flush();
-    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ provider: "codex", model: "fable" }));
+    const duplicates = rows().filter((r) => r.textContent?.includes("Fable"));
+    expect(duplicates).toHaveLength(2);
+    expect(duplicates[0].textContent).toContain("Claude");
+    expect(duplicates[1].textContent).toContain("Codex");
+  });
+
+  it("draws each provider's Agent mark once, first: on its launcher summary and at the start of its rows, never a letter (#5497)", async () => {
+    await open({ providers: [claude(), codex(), { ...codex(), id: "dsh", name: "dsh", engine: "dsh" }] });
+    const mark = (el: Element) => el.querySelector("[data-agent-mark]")?.getAttribute("data-agent-mark");
+    expect(["claude", "codex", "dsh"].map((p) => mark(launcher(p)))).toEqual(["claude", "codex", "dsh"]);
+    expect(row("Opus").querySelectorAll("[data-agent-mark]")).toHaveLength(1);
+    expect(mark(row("Opus").firstElementChild!)).toBe("claude");
+    act(() => launcher("codex").click());
+    expect(mark(row("GPT").firstElementChild!)).toBe("codex");
+    expect(row("GPT").querySelector("[data-row-setup] [data-agent-mark]")).toBeNull();
+    expect(document.body.querySelector('[data-agent-mark="letter"]')).toBeNull();
   });
 
   it("draws a provider's weekly quota bar and reset tooltip, and no bar when it is unknown", async () => {
@@ -726,7 +735,7 @@ describe("a long list", () => {
     expect(document.body.querySelector("[data-panel-more]")).toBeNull();
   });
 
-  it("shows the whole ID in a launcher and adds the launcher label on touch in search", async () => {
+  it("a name cut short shows the launcher and whole model ID; others add them only on a touch screen", async () => {
     const sw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
     const cw = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
     // a name longer than 20 characters does not fit
@@ -759,7 +768,7 @@ describe("a long list", () => {
       act(() => launcher("claude").click());
       const cut = row(long).querySelector<HTMLElement>("[data-row-id]")!;
       expect(cut.dataset.rowId).toBe("always");
-      expect(cut.textContent).toBe(long);
+      expect(cut.textContent).toBe(`Claude · ${long}`);
       expect(cut.firstElementChild!.className).toContain("line-clamp-2");
       type(search(), "sonnet");
       const short = row("Sonnet 5").querySelector<HTMLElement>("[data-row-id]")!;
