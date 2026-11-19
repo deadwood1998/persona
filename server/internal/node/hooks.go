@@ -503,7 +503,7 @@ func (n *Node) handleHook(ctx context.Context, req sockRequest) (any, error) {
 			Plan string `json:"plan"`
 		}
 		_ = json.Unmarshal(in.ToolInput, &p)
-		ix.Kind, ix.Plan = proto.IxPlan, p.Plan
+		ix.Kind, ix.Plan, ix.PlanThen = proto.IxPlan, p.Plan, n.planThen(in.SessionID)
 		// The terminal's own dialog may decide the plan while the card still waits (the card is not always
 		// withdrawn then): the footer is watched from now, until the card is answered.
 		decided := &terminalDecided{}
@@ -525,10 +525,7 @@ func (n *Node) handleHook(ctx context.Context, req sockRequest) (any, error) {
 			}
 			return permissionDecision(map[string]any{"behavior": "deny", "message": msg}), nil
 		}
-		mode := res.Mode
-		if mode == "" {
-			mode = cmp.Or(n.planThen(in.SessionID), "bypassPermissions")
-		}
+		mode := cmp.Or(proto.PlanAfterMode(ix.PlanThen), res.Mode, proto.ModeBypass)
 		if n.peer != nil && res.ModeActor != nil {
 			_ = n.peer.Notify(proto.EventModeSet, proto.ModeSetEvent{SessionID: in.SessionID, From: in.PermissionMode, To: mode, Actor: res.ModeActor})
 		}

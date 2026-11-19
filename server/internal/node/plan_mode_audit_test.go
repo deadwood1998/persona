@@ -15,7 +15,8 @@ func TestPlanHookReportsSelectedMode(t *testing.T) {
 	}{
 		{"default", "", "", "bypassPermissions", true, true},
 		{"plan then", "", "acceptEdits", "acceptEdits", true, true},
-		{"explicit", "default", "acceptEdits", "default", true, true},
+		{"explicit", "default", "", "default", true, true},
+		{"plan then takes precedence", "default", "acceptEdits", "acceptEdits", true, true},
 		{"rejected", "", "", "", false, true},
 		{"older manager", "", "", "bypassPermissions", true, false},
 	} {
