@@ -14,7 +14,8 @@ Existing tags:{{with .Tags}} {{join . "、"}}{{end}}
 # Related chats
 {{range .Chats}}
 ## {{.ID}}
-{{.Summary}}
+{{if .State}}State (recorded by the source): {{if eq .State "merged"}}merged{{else if eq .State "closed"}}closed{{else}}open{{end}}{{with .StateAt}} ({{.}}){{end}}
+{{end}}{{.Summary}}
 {{end}}{{with .Moments}}
 # Related company posts
 {{range .}}
@@ -36,7 +37,8 @@ Existing tags:{{with .Tags}} {{join . "、"}}{{end}}
 # 関連する会話
 {{range .Chats}}
 ## {{.ID}}
-{{.Summary}}
+{{if .State}}状態（出典が記録した事実）：{{if eq .State "merged"}}マージ済み{{else if eq .State "closed"}}クローズ済み{{else}}進行中{{end}}{{with .StateAt}}（{{.}}）{{end}}
+{{end}}{{.Summary}}
 {{end}}{{with .Moments}}
 # 関連する社内投稿
 {{range .}}
@@ -58,7 +60,8 @@ Existing tags:{{with .Tags}} {{join . "、"}}{{end}}
 # 相关会话
 {{range .Chats}}
 ## {{.ID}}
-{{.Summary}}
+{{if .State}}状态（来源记录的事实）：{{if eq .State "merged"}}已合并{{else if eq .State "closed"}}已关闭{{else}}进行中{{end}}{{with .StateAt}}（{{.}}）{{end}}
+{{end}}{{.Summary}}
 {{end}}{{with .Moments}}
 # 相关公司圈
 {{range .}}
