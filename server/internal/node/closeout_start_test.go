@@ -56,11 +56,14 @@ func TestDispatchedReportFormSkipsSecondSessionStart(t *testing.T) {
 	}
 }
 
-func TestFallbackReportFormIsRestoredAfterContextReset(t *testing.T) {
+func TestFallbackReportFormSkipsStartupAndReturnsAfterContextReset(t *testing.T) {
 	n, asked := closeoutStartNode(t, func() (string, error) { return "the form", nil })
 	pane := sockRequest{Kind: "hook", Pane: "w1:p1"}
 	n.state.put("s1", sessionState{TaskInstructions: closeout.MarkdownExample("English")})
-	for _, source := range []string{"compact", "clear"} {
+	if out := n.closeoutStart(t.Context(), pane, startHook("s1")); out != nil || asked.Load() != 0 {
+		t.Fatalf("first message already supplies the form: %v (%d calls)", out, asked.Load())
+	}
+	for _, source := range []string{"resume", "compact", "clear"} {
 		in := startHook("s1")
 		in.Source = source
 		out, _ := n.closeoutStart(t.Context(), pane, in).(map[string]any)
