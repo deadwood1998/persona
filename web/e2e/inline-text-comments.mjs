@@ -128,7 +128,11 @@ try {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     });
     await page.screenshot({ path: `${output}/${width}-${theme}-large.png` });
-    await page.evaluate(() => { delete document.documentElement.dataset.textSize; });
+    // Let the original text size and chat layout settle before measuring the effect of closing.
+    await page.evaluate(async () => {
+      delete document.documentElement.dataset.textSize;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    });
     await closeOldest();
     if (width === 390) {
       const mark = page.locator('[data-comment-mark="1"] button');
