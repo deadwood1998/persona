@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -98,9 +99,93 @@ func TestInboxClaudeUsesDefaultAndPersistsOrigin(t *testing.T) {
 	}
 }
 
-// inboxPermissionCLI models the narrow Claude Code permission contract from the regression: Plan rejects Persona MCP
-// before allowedTools, while default runs calls covered by mcp__persona without asking. It records completion instead
-// of contacting a hub. TestInboxModelReadOnlyInvestigationAndSuggestion exercises the manager's real tool path.
+// Inbox may read local files outside its working directory, including project instructions and installed Skills.
+// Directory-specific rules keep their linked-root coverage. Network, shell and mutation tools get no bare allow,
+// ordinary conversations keep the old boundary, and Claude's health denies stay in force.
+func TestInboxClaudeReadOnlyLocalResourceRules(t *testing.T) {
+	n, home := testNode(t)
+	n.dir = filepath.Join(home, ".persona")
+	cwd := filepath.Join(n.dir, "assistant")
+	skillRoot := filepath.Join(home, ".claude", "skills")
+	linkedSkill := filepath.Join(home, "skill-checkout")
+	linkedData := filepath.Join(home, "knowledge")
+	for _, dir := range []string{skillRoot, linkedSkill, linkedData, n.dir} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(linkedSkill, filepath.Join(skillRoot, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linkedData, filepath.Join(n.dir, "data")); err != nil {
+		t.Fatal(err)
+	}
+	// A link's target is allowed by its physical path: macOS's temporary directory is behind a link.
+	for _, dir := range []*string{&linkedSkill, &linkedData} {
+		physical, err := filepath.EvalSymlinks(*dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*dir = physical
+	}
+	const id = "inbox-read-only-resources"
+	n.state.put(id, sessionState{Origin: originInbox})
+	flags := n.claudeAssistantMCPAndTools(id, cwd, true)
+	allowed := strings.Split(mcpFlag(t, flags, "--allowedTools"), ",")
+	if !slices.Contains(allowed, "Read") {
+		t.Errorf("Inbox --allowedTools lacks the bare Read rule needed by project files and other installed Skill roots: %q", allowed)
+	}
+	for _, tool := range []string{"WebFetch", "WebSearch", "Bash", "Write", "Edit"} {
+		if slices.Contains(allowed, tool) {
+			t.Errorf("Inbox gained a bare %q allow rule: %q", tool, allowed)
+		}
+	}
+	fileRule := func(tool, dir string) string {
+		path := filepath.ToSlash(filepath.Clean(dir))
+		if path[0] != '/' {
+			path = "/" + path // a Windows drive path
+		}
+		return tool + "(/" + path + "/**)"
+	}
+	var readRules []string
+	for _, dir := range []string{skillRoot, filepath.Join(n.dir, "skills"), filepath.Join(n.dir, "data"), linkedSkill, linkedData} {
+		rule := fileRule("Read", dir)
+		readRules = append(readRules, rule)
+		if !slices.Contains(allowed, rule) {
+			t.Errorf("Inbox --allowedTools lacks %q: %q", rule, allowed)
+		}
+	}
+	for _, rule := range allowed {
+		if strings.HasPrefix(rule, "Write(") || strings.HasPrefix(rule, "Edit(") {
+			t.Errorf("Inbox gained a file-write allow rule: %q", rule)
+		}
+	}
+	ordinary := strings.Split(mcpFlag(t, n.claudeAssistantMCPAndTools("ordinary", cwd, true), "--allowedTools"), ",")
+	if slices.Contains(ordinary, "Read") {
+		t.Errorf("ordinary conversation gained the Inbox-only bare Read rule: %q", ordinary)
+	}
+	for _, rule := range readRules {
+		if slices.Contains(ordinary, rule) {
+			t.Errorf("ordinary conversation gained Inbox-only rule %q", rule)
+		}
+	}
+	denyAt := slices.Index(flags, "--disallowedTools")
+	if denyAt < 0 {
+		t.Fatalf("Inbox lost its health denies: %q", flags)
+	}
+	denied := flags[denyAt+1:]
+	for _, tool := range []string{"Read", "Edit"} {
+		rule := fileRule(tool, filepath.Join(n.dir, "health"))
+		if !slices.Contains(denied, rule) {
+			t.Errorf("Inbox --disallowedTools lacks %q: %q", rule, denied)
+		}
+	}
+}
+
+// inboxPermissionCLI models the narrow Claude Code permission contracts from the regressions: Plan rejects Persona MCP
+// before allowedTools, default runs calls covered by mcp__persona without asking, and built-in tools need their own bare
+// allow entry. It records completion and permission requests instead of contacting a hub. The manager test below
+// exercises the real read-only tool path.
 const inboxPermissionCLI = `printf '%s\n' "$*" >> "$CLI_FAKE_DIR/cli-argv"
 mode=default
 allowed=
@@ -120,15 +205,25 @@ while IFS= read -r line; do
       esac
       echo "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"$id\"}}" ;;
     *'"type":"user"'*)
-      if [ "$mode" = "plan" ]; then
-        printf '%s\n' 'Cannot call mcp__persona__lark_messages while in plan mode.' >> "$CLI_FAKE_DIR/permission-requests"
-      else
-        case ",$allowed," in
-          *",mcp__persona,"*)
-            printf '%s\n' 'mcp__persona__lark_messages' 'mcp__persona__inbox_suggest' >> "$CLI_FAKE_DIR/completed-tools" ;;
-          *) printf '%s\n' 'Persona MCP was not allowed without asking' >> "$CLI_FAKE_DIR/permission-requests" ;;
-        esac
-      fi
+      case "$line" in
+        *permission-replay*)
+          for tool in Read WebFetch Write Edit Bash; do
+            case ",$allowed," in
+              *",$tool,"*) printf '%s\n' "$tool" >> "$CLI_FAKE_DIR/completed-tools" ;;
+              *) printf '%s\n' "$tool" >> "$CLI_FAKE_DIR/permission-requests" ;;
+            esac
+          done ;;
+        *)
+          if [ "$mode" = "plan" ]; then
+            printf '%s\n' 'Cannot call mcp__persona__lark_messages while in plan mode.' >> "$CLI_FAKE_DIR/permission-requests"
+          else
+            case ",$allowed," in
+              *",mcp__persona,"*)
+                printf '%s\n' 'mcp__persona__lark_messages' 'mcp__persona__inbox_suggest' >> "$CLI_FAKE_DIR/completed-tools" ;;
+              *) printf '%s\n' 'Persona MCP was not allowed without asking' >> "$CLI_FAKE_DIR/permission-requests" ;;
+            esac
+          fi ;;
+      esac
       echo '{"type":"result","subtype":"success","result":"done"}' ;;
   esac
 done
@@ -155,6 +250,30 @@ func TestInboxClaudeReadOnlyMCPAndSuggestionSkipPermission(t *testing.T) {
 	}
 	if got := len(f.fh.interactions()); got != 0 {
 		t.Fatalf("handling opened %d permission cards, want none", got)
+	}
+}
+
+// The same launch contract covers built-in tools: the Inbox-only bare Read completes, while network, shell and file
+// mutations still reach the permission prompt. The fake CLI records prompts rather than contacting a hub.
+func TestInboxClaudeBuiltInReadAndMutationPermissionReplay(t *testing.T) {
+	f := cliTestBash(t)
+	if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), "bin", "claude"), []byte("#!/bin/sh\n"+inboxPermissionCLI), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	id, err := f.n.assistantSend(context.Background(), "", t.TempDir(), "claude", "permission-replay", nil, proto.ModeBypass, "", modelExecution{Origin: originInbox})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.idle(t, id)
+	if got := f.file("completed-tools"); got != "Read\n" {
+		t.Fatalf("completed built-in tools = %q, want only Read", got)
+	}
+	const requests = "WebFetch\nWrite\nEdit\nBash\n"
+	if got := f.file("permission-requests"); got != requests {
+		t.Fatalf("built-in permission requests = %q, want %q", got, requests)
+	}
+	if got := len(f.fh.interactions()); got != 0 {
+		t.Fatalf("fake CLI contacted the hub with %d permission cards, want none", got)
 	}
 }
 
@@ -297,9 +416,10 @@ func TestInboxNodeRecoveryKeepsPersistedOrigin(t *testing.T) {
 			if in := f.file("stdin.jsonl"); !strings.Contains(in, `"mode":"default"`) {
 				t.Fatalf("node-owned recovery did not force default: %s", in)
 			}
-			cliWait(t, "recovered task cleanup", func() bool {
-				st, _ := f.n.state.get(id)
-				return len(st.Tasks) == 0 && st.Origin == originInbox && st.OriginKnown
+			// The CLI can publish its result before the recovery caller clears the delivered lost-task record.
+			cliWait(t, "cleared lost tasks and retained Inbox origin", func() bool {
+				st, ok := f.n.state.get(id)
+				return ok && len(st.Tasks) == 0 && st.Origin == originInbox && st.OriginKnown
 			})
 			if st, _ := f.n.state.get(id); len(st.Tasks) != 0 || st.Origin != originInbox || !st.OriginKnown {
 				t.Fatalf("recovered session state=%+v, want cleared tasks and retained origin decision", st)
@@ -365,7 +485,8 @@ func TestRecoveryWithoutModelAnswerPreservesStoredCwd(t *testing.T) {
 				t.Fatal(err)
 			}
 			const id = "11111111-1111-4111-8111-11111111111a"
-			cwd := filepath.Join(t.TempDir(), ".persona", "assistant")
+			// The fake CLI writes the shell's $PWD, the physical path: macOS's temporary directory is behind a link.
+			cwd := filepath.Join(physicalTempDir(t), ".persona", "assistant")
 			if err := os.MkdirAll(cwd, 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -808,6 +929,8 @@ func TestInboxLarkOutboundDeniedOrdinaryBypassPreserved(t *testing.T) {
 		{"Inbox ordinary write", originInbox, "lark-cli docs +create --title example", "deny"},
 		{"Inbox unknown write", originInbox, "lark-cli custom $action", "deny"},
 		{"Inbox read", originInbox, "lark-cli docs +fetch --doc-id example", "allow"},
+		{"Inbox ol write", originInbox, "ol POST /messages/1/recall", "deny"},
+		{"Inbox ol read", originInbox, "ol GET /messages/1", "allow"},
 		{"ordinary bot send", "", "lark-cli im +messages-send --as bot --text hello", "allow"},
 		{"ordinary bot reply", "", "lark-cli im +messages-reply --as bot --text hello", "allow"},
 		{"ordinary read", "", "lark-cli docs +fetch --doc-id example", "allow"},
@@ -817,6 +940,7 @@ func TestInboxLarkOutboundDeniedOrdinaryBypassPreserved(t *testing.T) {
 			fh := withFakeHub(t, n)
 			const sid = "11111111-1111-4111-8111-111111111111"
 			cfg := olCfg()
+			cfg.Gates[0].Command = "ol"
 			cfg.CLI = &proto.LarkCLI{Bin: "/nonexistent/lark-cli"}
 			n.larkRisks = map[string]string{"\x00docs +fetch": "read", "\x00docs +create": "write"}
 			n.mu.Lock()
