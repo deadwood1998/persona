@@ -61,7 +61,11 @@ func (t PlanTask) linkSource() (source, via string) {
 // linkPlanAgent links the agent just started for plan task t to its todo.
 func (s *Service) linkPlanAgent(ctx context.Context, t PlanTask, mid, sid string, allowDone bool) error {
 	source, via := t.linkSource()
-	return s.linkTodoAgentWithSourceAllowingDone(ctx, t.TodoID, mid, sid, t.Title, t.Cwd, "", "", source, via, allowDone)
+	err := s.linkTodoAgentWithSourceAllowingDone(ctx, t.TodoID, mid, sid, t.Title, t.Cwd, t.startedAgent, "", source, via, allowDone)
+	if err == nil && !allowDone {
+		s.estimateAdmitted(ctx, t, mid, sid)
+	}
+	return err
 }
 
 // leaderTask is the open task agent machine/session leads, with the agent's own row; false for any other agent.
@@ -279,6 +283,7 @@ type leaderTaskIn struct {
 	Model         string   `json:"model"`
 	Tier          string   `json:"tier"`
 	Effort        string   `json:"effort"`
+	Speed         string   `json:"speed"`
 	Permission    string   `json:"permission"`
 	Readonly      bool     `json:"readonly"`
 	DoneWhen      []string `json:"done_when"`
@@ -301,7 +306,7 @@ func (l *leaderScope) workerTasks(args json.RawMessage) ([]PlanTask, error) {
 	out := make([]PlanTask, 0, len(in.Tasks))
 	for _, t := range in.Tasks {
 		pt := PlanTask{Title: t.Title, Prompt: t.Prompt, Machine: t.Machine, MachinePolicy: t.MachinePolicy, Cwd: t.Cwd,
-			Launcher: t.Launcher, Model: t.Model, Tier: t.Tier, Effort: t.Effort, Permission: t.Permission, Readonly: t.Readonly,
+			Launcher: t.Launcher, Model: t.Model, Tier: t.Tier, Effort: t.Effort, Speed: t.Speed, Permission: t.Permission, Readonly: t.Readonly,
 			DoneWhen: t.DoneWhen, Goal: t.Goal, ExpectMinutes: t.ExpectMinutes, Why: t.Why, Parent: l.task.ID, Project: l.task.Project}
 		if strings.TrimSpace(pt.Machine) == "" {
 			pt.Machine = l.agent.MachineID
@@ -513,6 +518,7 @@ func (s *Service) deliverToLeaderAgent(ctx context.Context, lead TodoAgent, list
 	}
 	s.logf("supervise: %d signal(s) to task leader %s", len(entries), short(lead.SessionID))
 	s.parkedDueTold(ctx, kept)
+	s.estimateDueTold(ctx, kept)
 	s.turnsTold(ctx, kept) // how a turn ended is told once, to a leader too (task_turns.go)
 	return true
 }
@@ -579,6 +585,7 @@ func (s *Service) leaderDelivered(ctx context.Context, lead TodoAgent, entries [
 		s.logf("supervise: task leader %s took the message; deduplication not recorded: %v", short(lead.SessionID), err)
 	}
 	s.parkedDueTold(ctx, kept)
+	s.estimateDueTold(ctx, kept)
 	s.turnsTold(ctx, kept)
 	s.logf("supervise: %d signal(s) to task leader %s after confirmation", len(kept), short(lead.SessionID))
 }
@@ -737,7 +744,7 @@ func (s *Service) leaderReview(ctx context.Context, lead TodoAgent, args json.Ra
 	b := &s.supervise
 	b.mu.Lock()
 	b.init()
-	for _, k := range []string{sigReview, sigIdle, sigUnjudged, sigNeedsYou, sigStalled, sigNoProgress, sigOrphaned} {
+	for _, k := range []string{sigReview, sigIdle, sigUnjudged, sigNeedsYou, sigStalled, sigNoProgress, sigOrphaned, sigEstimateDue} {
 		delete(b.pending, t.ID+"|"+k) // reviewed: what waited is answered
 	}
 	b.mu.Unlock()
