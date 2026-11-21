@@ -562,3 +562,17 @@ it("removes a pending plan after a reconnect snapshot no longer includes it", as
     expect(getFeedState().plans[plan.id]).toBeUndefined();
   } finally { vi.unstubAllGlobals(); }
 });
+
+it("clears an already-loaded side plan on the first authoritative empty Main snapshot", async () => {
+  const plan: TaskPlan = { id: "side-before-main", conversation: "side-before-main-chat", tasks: [], state: "open" };
+  vi.stubGlobal("localStorage", { getItem: () => "tok", setItem() {}, removeItem() {} });
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => Response.json(url.includes("side-before-main-chat")
+    ? { items: [], plans: { [plan.id]: plan } }
+    : { items: [], plans: {}, pending_plan_ids: [] })));
+  try {
+    await loadFeed(plan.conversation);
+    expect(getFeedState().plans[plan.id]?.state).toBe("open");
+    await loadFeed("first-empty-main-snapshot");
+    expect(getFeedState().plans[plan.id]).toBeUndefined();
+  } finally { vi.unstubAllGlobals(); }
+});
