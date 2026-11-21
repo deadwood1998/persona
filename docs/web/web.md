@@ -118,7 +118,8 @@ Dismiss, Undo, reload, new same-reference progress, and that no reply or task/Ag
 uses the shared browser and keeps the test pages open.
 
 **Pending plans across conversations (#12254).** Main's Needs you includes every open task plan of the current
-assistant, including plans made by scheduled routines and side conversations. The source conversation labels its group;
+assistant in its ordinary space, including plans made by scheduled routines and side conversations. Health keeps its
+own plans; archived and deleted source conversations are excluded from the Main snapshot. The source conversation labels its group;
 Start and Don't start act on that plan's source, and Open navigates there. Other conversations show only their own plans.
 The Main feed carries the pending-plan snapshot on initial load and reconnect. A newer live update or completed owner
 action wins over an older read. Each open plan counts as one decision, however many tasks it contains. Conversation rows

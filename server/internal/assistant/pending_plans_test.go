@@ -77,3 +77,27 @@ func TestMainPendingPlansRespectExtensionFeedScope(t *testing.T) {
 		}
 	})
 }
+
+func TestMainPendingPlansKeepHealthSeparate(t *testing.T) {
+	todoStores(t, func(t *testing.T, e *todoEnv, _ *db.DB) {
+		ctx := context.Background()
+		e.s.noteConversationSpaces(ctx, []db.ConversationSpace{{MachineID: "server", SessionID: "health-pending", Space: SpaceHealth}})
+		p := &TaskPlan{ID: "health-pending-" + randomHex(6), Conversation: "health-pending", State: planOpen}
+		if err := e.s.savePlan(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+		plans, err := e.s.mainPendingPlans(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, got := range plans {
+			if got.ID == p.ID {
+				t.Fatal("Health plan reached Main")
+			}
+		}
+		tagged := e.s.planWithSpace(ctx, p)
+		if tagged.Space != SpaceHealth || p.Space != "" {
+			t.Fatalf("space snapshot mutated source: %+v / %+v", tagged, p)
+		}
+	})
+}

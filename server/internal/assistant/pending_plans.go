@@ -41,3 +41,45 @@ func (s *Service) openTaskPlans(ctx context.Context) ([]*TaskPlan, error) {
 	}
 	return out, nil
 }
+
+// Main belongs to the ordinary Assistant space; Health keeps its own decisions.
+func (s *Service) mainPendingPlans(ctx context.Context) ([]*TaskPlan, error) {
+	plans, err := s.openTaskPlans(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(plans))
+	for _, p := range plans {
+		ids = append(ids, p.Conversation)
+	}
+	spaces := s.conversationSpaces(ctx, ids)
+	archived, ready := s.archivedSet()
+	if !ready {
+		return nil, errors.New("pending plans: archive state unavailable")
+	}
+	out := make([]*TaskPlan, 0, len(plans))
+	for _, p := range plans {
+		if space := spaces[p.Conversation]; space.known && space.space != "" {
+			continue
+		}
+		if _, hidden := archived[p.Conversation]; hidden {
+			continue
+		}
+		if err := s.conversationIDAvailable(ctx, p.Conversation); err != nil {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+func (s *Service) planWithSpace(ctx context.Context, p *TaskPlan) *TaskPlan {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	if space, known := s.conversationSpace(ctx, p.Conversation); known {
+		cp.Space = space
+	}
+	return &cp
+}

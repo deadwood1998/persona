@@ -416,3 +416,11 @@ describe("pending plans across Persona conversations", () => {
     expect(entries("side-chat").map((item) => item.key)).toEqual(["plan:side"]);
   });
 });
+
+
+it("keeps Health plans out of Main while retaining them in their own conversation", () => {
+ const plans: Record<string, TaskPlan> = { health: {id:"health",conversation:"health-chat",space:"health",state:"open",tasks:[]} };
+ const input = {main:"main",plans,todos:[],sessions:[],interactions:[],feed:[]};
+ expect(assistantEntries({...input,conversation:"main"}).needsYou).toEqual([]);
+ expect(assistantEntries({...input,conversation:"health-chat"}).needsYou.map((item)=>item.key)).toEqual(["plan:health"]);
+});

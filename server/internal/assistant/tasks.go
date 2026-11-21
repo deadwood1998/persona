@@ -227,6 +227,7 @@ func (t *PlanTask) normalizeReadonlyPermission(mode string) {
 
 // TaskPlan is a plan the assistant handed the user.
 type TaskPlan struct {
+	Space        string     `json:"space,omitempty"`
 	ID           string     `json:"id"`
 	Conversation string     `json:"conversation"`
 	Tasks        []PlanTask `json:"tasks"`
@@ -474,7 +475,7 @@ func (s *Service) patchPlanTask(ctx context.Context, planID string, i int, chang
 			return errPlanNotFound
 		}
 		if err == nil && row != nil {
-			s.event(ctx, map[string]any{"type": "task_plan", "plan": planFromRow(*row)})
+			s.event(ctx, map[string]any{"type": "task_plan", "plan": s.planWithSpace(ctx, planFromRow(*row))})
 		}
 		return err
 	}
@@ -489,7 +490,7 @@ func (s *Service) patchPlanTask(ctx context.Context, planID string, i int, chang
 	if ok, err := s.movePlan(ctx, p, planStarted); err != nil || !ok {
 		return err
 	}
-	s.event(ctx, map[string]any{"type": "task_plan", "plan": p})
+	s.event(ctx, map[string]any{"type": "task_plan", "plan": s.planWithSpace(ctx, p)})
 	return nil
 }
 
@@ -865,7 +866,7 @@ func (s *Service) taskRoutes() {
 			planErr(w, err)
 			return
 		}
-		apierr.WriteJSON(w, map[string]any{"plan": p})
+		apierr.WriteJSON(w, map[string]any{"plan": s.planWithSpace(r.Context(), p)})
 	})
 	s.handle("POST /api/v1/task-plans/{id}/dismiss", func(w http.ResponseWriter, r *http.Request) {
 		if !fullRole(r) {
@@ -877,7 +878,7 @@ func (s *Service) taskRoutes() {
 			planErr(w, err)
 			return
 		}
-		apierr.WriteJSON(w, map[string]any{"plan": p})
+		apierr.WriteJSON(w, map[string]any{"plan": s.planWithSpace(r.Context(), p)})
 	})
 	s.handle("POST /api/v1/todos/{id}/retry", func(w http.ResponseWriter, r *http.Request) {
 		if !fullRole(r) {
@@ -952,7 +953,7 @@ func (s *Service) taskRoutes() {
 		// Main watches pending plans from every conversation of this manager. Extension
 		// tokens retain their existing conversation-only feed and visibility rules.
 		if !ext && r.PathValue("id") == s.settings(r.Context()).Main {
-			pending, readErr := s.openTaskPlans(r.Context())
+			pending, readErr := s.mainPendingPlans(r.Context())
 			if readErr != nil {
 				apierr.Write(w, http.StatusServiceUnavailable, readErr)
 				return
@@ -969,7 +970,7 @@ func (s *Service) taskRoutes() {
 			items, plans, shown = s.extensionFeed(r.Context(), items, plans)
 		}
 		for id, p := range plans {
-			plans[id] = s.planWithSuggestion(r.Context(), p, s.requestLang(r))
+			plans[id] = s.planWithSpace(r.Context(), s.planWithSuggestion(r.Context(), p, s.requestLang(r)))
 		}
 		if items == nil {
 			items = []FeedItem{}

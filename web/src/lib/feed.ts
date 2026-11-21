@@ -64,6 +64,7 @@ export interface PlanTask {
 }
 
 export interface TaskPlan {
+  space?: string;
   /** Client-side ownership, captured from the response or event envelope. */
   manager?: string;
   id: string;
