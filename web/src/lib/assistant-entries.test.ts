@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fixture from "../../../spec/fixtures/entries/cases.json";
-import { assistantEntries, decisionLaterKey } from "./assistant-entries";
+import { assistantEntries, decisionLaterKey, needsYouBySupervisor } from "./assistant-entries";
 import { triageTodos } from "./todo-triage";
 import { makeSessionLookup } from "./todos";
 import type { FeedItem, TaskPlan } from "./feed";
@@ -381,5 +381,38 @@ describe("Persona reviewing in the Assistant's entries", () => {
     expect(keys(got.review)).toEqual(["task:with-pr"]);
     expect(got.parked).toEqual([]);
     expect(got.needsYou).toEqual([]);
+  });
+});
+
+
+describe("pending plans across Persona conversations", () => {
+  const at = "2026-11-21T01:00:00Z";
+  const plan = (id: string, conversation: string, state: TaskPlan["state"] = "open"): TaskPlan => ({
+    id, conversation, state, created_at: at, tasks: [],
+  });
+  const plans = { local: plan("local", "main"), routine: plan("routine", "routine-chat"),
+    side: plan("side", "side-chat"), done: plan("done", "routine-chat", "dismissed") };
+  const entries = (conversation: string, main?: string) => assistantEntries({
+    conversation, main, plans, todos: [], sessions: [], interactions: [], feed: [],
+  }).needsYou;
+
+  it("shows every open plan in Main, attributed to its source", () => {
+    const items = entries("main", "main");
+    expect(items.map((item) => item.key)).toEqual(["plan:local", "plan:routine", "plan:side"]);
+    expect(needsYouBySupervisor(items, "main").map((group) => [group.supervisor, group.items.map((item) => item.key)]))
+      .toEqual([["main", ["plan:local"]], ["routine-chat", ["plan:routine"]], ["side-chat", ["plan:side"]]]);
+  });
+
+  it("excludes another manager's pending plan from Main", () => {
+    const result = assistantEntries({ conversation: "main", main: "main", manager: "home",
+      plans: { home: { ...plan("home", "routine"), manager: "home" }, work: { ...plan("work", "work-chat"), manager: "work" } },
+      todos: [], sessions: [], interactions: [], feed: [],
+    });
+    expect(result.needsYou.map((item) => item.key)).toEqual(["plan:home"]);
+  });
+
+  it("keeps a side conversation scoped, including before Main is known", () => {
+    expect(entries("side-chat", "main").map((item) => item.key)).toEqual(["plan:side"]);
+    expect(entries("side-chat").map((item) => item.key)).toEqual(["plan:side"]);
   });
 });

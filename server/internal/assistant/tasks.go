@@ -948,6 +948,22 @@ func (s *Service) taskRoutes() {
 			return
 		}
 		plans := s.feedPlans(r.Context(), items)
+		var pendingIDs []string
+		// Main watches pending plans from every conversation of this manager. Extension
+		// tokens retain their existing conversation-only feed and visibility rules.
+		if !ext && r.PathValue("id") == s.settings(r.Context()).Main {
+			pending, readErr := s.openTaskPlans(r.Context())
+			if readErr != nil {
+				apierr.Write(w, http.StatusServiceUnavailable, readErr)
+				return
+			}
+			pendingIDs = make([]string, 0, len(pending))
+			for _, p := range pending {
+				pendingIDs = append(pendingIDs, p.ID)
+				plans[p.ID] = p
+			}
+		}
+
 		var shown func(TaskCard) bool
 		if ext {
 			items, plans, shown = s.extensionFeed(r.Context(), items, plans)
@@ -981,6 +997,9 @@ func (s *Service) taskRoutes() {
 			cards = slices.DeleteFunc(cards, func(c TaskCard) bool { return !shown(c) })
 		}
 		out := map[string]any{"items": items, "plans": plans, "task_cards": cards, "views": views, "view_actions": actions, "view_blocks": blocks}
+		if pendingIDs != nil {
+			out["pending_plan_ids"] = pendingIDs
+		}
 		if paginated {
 			out["next_cursor"] = nextCursor
 		}
